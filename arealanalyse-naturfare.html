@@ -1,0 +1,1943 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arealanalyse – naturfare og vassdrag</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&family=Source+Serif+4:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+
+<style>
+  :root {
+    --paper: #F2F5F6;
+    --panel: #FFFFFF;
+    --ink: #16252D;
+    --muted: #5A6B74;
+    --line: #D5DDE1;
+    --accent: #1F5F7A;
+    --accent-dark: #164A5F;
+    --hit: #A83A2C;
+    --hit-bg: #FBECE9;
+    --warn: #8A5A00;
+    --warn-bg: #FFF3D6;
+    --ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: var(--ui); color: var(--ink); background: var(--paper); font-size: 15px; line-height: 1.45; }
+
+  .app { display: grid; grid-template-columns: 400px 1fr; height: 100vh; }
+  .panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 22px 20px 32px; }
+  #map { height: 100%; min-height: 320px; background: #dfe6e9; }
+
+  h1 { font-family: var(--serif); font-weight: 600; font-size: 24px; line-height: 1.15; margin: 0 0 4px; }
+  .sub { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+  h2 { font-family: var(--serif); font-weight: 600; font-size: 18px; margin: 0 0 6px; }
+
+  label, .lbl { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin: 0 0 6px; }
+  input[type=search], input[type=text], select, textarea {
+    width: 100%; font: inherit; color: var(--ink); background: #fff;
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px;
+  }
+  input[type=search]:focus-visible, input[type=text]:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .search { position: relative; margin-bottom: 18px; }
+  #hits { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; position: absolute; left: 0; right: 0; z-index: 800; box-shadow: 0 6px 18px rgba(22,37,45,.12); display: none; max-height: 260px; overflow-y: auto; }
+  #hits li { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 14px; }
+  #hits li:last-child { border-bottom: 0; }
+  #hits li:hover, #hits li[aria-selected=true] { background: var(--paper); }
+  #hits small { color: var(--muted); display: block; }
+
+  .tools { margin-bottom: 20px; }
+  .seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 14px; padding: 9px 6px; border: 0; background: #fff; color: var(--ink); cursor: pointer; border-right: 1px solid var(--line); }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed=true] { background: var(--accent); color: #fff; }
+  .radius { margin-top: 12px; }
+
+  .empty { color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; margin: 0; }
+  .loading { border-top: 1px solid var(--line); padding-top: 16px; color: var(--muted); }
+  .loading::after { content: ""; display: block; height: 3px; margin-top: 10px; background: linear-gradient(90deg, var(--accent) 30%, transparent 30%) 0 0 / 200% 100%; animation: slide 1.1s linear infinite; }
+  @keyframes slide { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .loading::after { animation: none; background: var(--accent); opacity: .4; } }
+
+  .result { border-top: 1px solid var(--line); padding-top: 16px; }
+  .where { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .status { border-left: 4px solid var(--line); background: var(--paper); padding: 9px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; }
+  .status strong { display: block; font-weight: 600; font-size: 14px; }
+  .status span { font-size: 14px; color: var(--muted); }
+  .status.hit { border-left-color: var(--hit); background: var(--hit-bg); }
+  .status.hit span { color: var(--hit); font-weight: 500; }
+  .status.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .status.warn span { color: var(--warn); }
+
+  .sum { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+  .sum strong { color: var(--ink); }
+  .steps { margin: 0 0 16px; }
+  .steps details.step { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 0 6px 6px 0; margin-bottom: 6px; background: #fff; }
+  .steps details.step > summary { cursor: pointer; padding: 8px 10px; font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
+  .steps .no { font-weight: 600; white-space: nowrap; }
+  .steps .badge { margin-left: auto; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--paper); color: var(--muted); white-space: nowrap; }
+  .steps .st-hit { border-left-color: var(--hit); }
+  .steps .st-hit .badge { background: var(--hit-bg); color: var(--hit); font-weight: 500; }
+  .steps .st-manual, .steps .st-error { border-left-color: var(--warn); }
+  .steps .st-manual .badge, .steps .st-error .badge { background: var(--warn-bg); color: var(--warn); }
+  .steps .st-na { opacity: 0.6; }
+  .stepbody { padding: 0 12px 10px; font-size: 14px; }
+  .stepbody p { margin: 6px 0; }
+  .stepbody .hits { color: var(--muted); font-size: 13px; }
+  .leaflet-control-layers-list { max-height: 60vh; overflow-y: auto; }
+  .zones { margin: 14px 0 16px; }
+  .zones details { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; background: #fff; }
+  .zones summary { cursor: pointer; padding: 9px 12px; font-size: 14px; font-weight: 500; }
+  .zones table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0 0 8px; }
+  .zones td { padding: 4px 12px; vertical-align: top; border-top: 1px solid var(--line); }
+  .zones td:first-child { color: var(--muted); width: 42%; word-break: break-word; }
+
+  textarea#report { font-family: var(--serif); font-size: 15px; line-height: 1.55; min-height: 280px; resize: vertical; padding: 14px; }
+  .actions { display: flex; gap: 8px; margin: 10px 0 0; }
+  .btn { font: inherit; font-size: 14px; font-weight: 500; padding: 9px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  .btn:hover { background: var(--accent-dark); }
+  .btn.ghost { background: #fff; color: var(--accent); }
+  .btn.ghost:hover { background: var(--paper); }
+  .fine { color: var(--muted); font-size: 12.5px; margin: 14px 0 0; }
+
+  .maker { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+  .maker summary { font-family: var(--serif); font-weight: 600; font-size: 18px; cursor: pointer; }
+  .maker-body { margin-top: 14px; display: grid; gap: 14px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chk { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ink); font-weight: 400; margin: 0; }
+  .chk input { width: auto; margin: 0; }
+  #mkSeries { margin: 0; padding-left: 20px; font-size: 14px; }
+  #mkSeries li { margin-bottom: 4px; }
+  #mkSeries li span { display: inline-block; max-width: calc(100% - 30px); }
+  #mkSeries small { color: var(--muted); }
+  #mkSeries .x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 0 6px; }
+  #mkSeries .x:hover { color: var(--hit); }
+
+  #toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 14px; z-index: 2000; display: none; max-width: 90vw; }
+
+  .leaflet-container.pick { cursor: crosshair; }
+  .leaflet-container { font-family: var(--ui); }
+  .pt-marker { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #16252D; box-sizing: border-box; }
+  .pt-marker.editing { cursor: move; }
+
+  @media (max-width: 820px) {
+    .app { display: flex; flex-direction: column; height: auto; }
+    #map { order: 1; height: 56vh; }
+    .panel { order: 2; border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
+    body { height: auto; }
+  }
+
+  @media print {
+    #map, .search, .tools, .actions, .fine, .zones, .status, .maker { display: none !important; }
+    .app { display: block; height: auto; }
+    .panel { overflow: visible; border: 0; padding: 0; }
+    textarea#report { border: 0; padding: 0; resize: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <h1>Arealanalyse</h1>
+    <p class="sub">Kartbasert veileder for reguleringsplan (NVE): 16 steg med kartlag og vurdering</p>
+
+    <div class="search">
+      <label for="q">Søk etter adresse</label>
+      <input id="q" type="search" placeholder="Gate og nummer, sted" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="hits">
+      <ul id="hits" role="listbox"></ul>
+    </div>
+
+    <div class="tools">
+      <span class="lbl" id="modeLbl">Velg analyseområde</span>
+      <div class="seg" role="group" aria-labelledby="modeLbl">
+        <button type="button" data-mode="point" aria-pressed="true">Punkt</button>
+        <button type="button" data-mode="polygon" aria-pressed="false">Polygon</button>
+        <button type="button" data-mode="rectangle" aria-pressed="false">Rektangel</button>
+      </div>
+      <div class="radius" id="radiusWrap">
+        <label for="radius">Sirkel rundt punktet</label>
+        <select id="radius">
+          <option value="0">Bare punktet</option>
+          <option value="25">Radius 25 m</option>
+          <option value="50" selected>Radius 50 m</option>
+          <option value="100">Radius 100 m</option>
+          <option value="250">Radius 250 m</option>
+          <option value="500">Radius 500 m</option>
+        </select>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button type="button" class="btn ghost" id="editShape" disabled>Rediger området</button>
+        <button type="button" class="btn ghost" id="deleteShape" disabled>Slett området</button>
+      </div>
+    </div>
+
+    <div id="out" aria-live="polite">
+      <p class="empty">Klikk i kartet, søk etter en adresse eller tegn et område for å hente kartlag fra NVE.</p>
+    </div>
+
+    <details class="maker" id="maker">
+      <summary>Lag kart (PDF)</summary>
+      <div class="maker-body">
+        <div>
+          <label for="mkExtent">Utsnitt</label>
+          <select id="mkExtent">
+            <option value="view">Midten av kartvinduet</option>
+            <option value="analysis">Analyseområdet</option>
+            <option value="draw">Tegn utsnitt i kartet</option>
+          </select>
+          <button type="button" class="btn ghost" id="mkDraw" hidden style="margin-top:8px">Tegn utsnittet</button>
+          <button type="button" class="btn ghost" id="mkEditDraw" hidden style="margin-top:8px">Rediger utsnittet</button>
+        </div>
+        <div class="row2">
+          <div>
+            <label for="mkSize">Papirformat</label>
+            <select id="mkSize"><option value="A4">A4</option><option value="A3">A3</option></select>
+          </div>
+          <div>
+            <label for="mkOri">Retning</label>
+            <select id="mkOri"><option value="l">Liggende</option><option value="p">Stående</option></select>
+          </div>
+        </div>
+        <div>
+          <label for="mkScale">Målestokk</label>
+          <select id="mkScale">
+            <option value="fit">Tilpass utsnittet</option>
+            <option value="500">1:500</option>
+            <option value="1000">1:1 000</option>
+            <option value="2000">1:2 000</option>
+            <option value="5000">1:5 000</option>
+            <option value="10000">1:10 000</option>
+            <option value="25000">1:25 000</option>
+            <option value="50000">1:50 000</option>
+            <option value="100000">1:100 000</option>
+          </select>
+        </div>
+        <div>
+          <label for="mkZone">Koordinatsystem</label>
+          <select id="mkZone">
+            <option value="auto">Automatisk etter plassering</option>
+            <option value="32">EUREF89 UTM sone 32</option>
+            <option value="33">EUREF89 UTM sone 33</option>
+            <option value="35">EUREF89 UTM sone 35</option>
+          </select>
+          <p class="fine" id="mkCrsInfo" style="margin-top:6px"></p>
+        </div>
+        <div><label for="mkTitle">Tittel</label><input id="mkTitle" type="text" value="Kartutsnitt"></div>
+        <div><label for="mkSub">Undertittel</label><input id="mkSub" type="text" placeholder="F.eks. plannavn eller gnr/bnr"></div>
+        <div>
+          <label for="mkDpi">Kvalitet</label>
+          <select id="mkDpi"><option value="150">Standard (150 dpi)</option><option value="250">Høy (250 dpi)</option></select>
+        </div>
+        <label class="chk"><input type="checkbox" id="mkFrame" checked> Vis kartramme i kartet</label>
+        <label class="chk"><input type="checkbox" id="mkGrid" checked> Koordinatrutenett i kartet</label>
+        <label class="chk"><input type="checkbox" id="mkArea" checked> Ta med analyseområdet</label>
+        <label class="chk"><input type="checkbox" id="mkText"> Ta med analysetekst som siste side</label>
+        <div id="mkSeriesWrap" hidden><span class="lbl">Kartserie (én side per utsnitt)</span><ol id="mkSeries"></ol></div>
+        <div class="actions">
+          <button type="button" class="btn ghost" id="mkAdd">Legg til i kartserie</button>
+          <button type="button" class="btn" id="mkGo">Lag PDF</button>
+        </div>
+        <p class="fine" id="mkStatus" aria-live="polite">Kartlagene som er slått på i kartet tas med i PDF-en.</p>
+      </div>
+    </details>
+  </aside>
+
+  <main id="map" aria-label="Kart"></main>
+</div>
+<div id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/esri-leaflet@3/dist/esri-leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- Konfigurasjon ---------- */
+  var HOSTS = ['https://kart.nve.no/enterprise/rest/services', 'https://nve.geodataonline.no/arcgis/rest/services'];
+  var BIG_AREA_M2 = 20e6;                                        // over dette hoppes andelsberegning over
+  var PDF_LAYER_BUFFER_M = 50;                                   // buffersone for hvilke kartlag som regnes som "innenfor" analyseområdet i kartutsnitt
+
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); };
+
+  /* ---------- Tjenester hos NVE (finnes automatisk via katalogen) ---------- */
+  /* NVE flyttet alle karttjenester til kart.nve.no i desember 2025 og bytter jevnlig versjonsnummer.
+     Derfor slås tjenestene opp i katalogen på navn, og nyeste versjon velges. */
+  var SVC = {
+    flomsone:  { re: /^Flomsoner\d*$/i, fb: 'Flomsoner1' },
+    flomakt:   { re: /^FlomAktsomhet\d*$/i, fb: 'FlomAktsomhet' },
+    skredfare: { re: /^Skredfaresoner\d*$/i, fb: 'Skredfaresoner3' },
+    jordflom:  { re: /^jord.?flom.?skred.?akt/i, bad: /_del|gamle?/i, fb: 'JordFlomskredAktsomhet' },
+    sno:       { re: /^SnoskredAktsomhet\d*$/i, fb: 'SnoskredAktsomhet' },
+    stein:     { re: /^SkredSteinAkt/i, fb: 'SkredSteinAktR' },
+    hendelse:  { re: /skredhendelse/i, fb: 'SkredHendelser' },
+    fjellskred: { re: /fjellskred/i, bad: /instrument|overv|sikring/i },
+    kvaakt:    { re: /^KvikkleireskredAktsomhet\d*$/i, fb: 'KvikkleireskredAktsomhet' },
+    kvsone:    { re: /^SkredKvikkleire\d*$/i, fb: 'SkredKvikkleire2' },
+    elv:       { re: /^Elvenett\d*$/i, fb: 'Elvenett1' },
+    vern:      { re: /vern.*vassdrag|verneplan|vernede|vernavassdrag/i },
+    nett:      { re: /^Nettanlegg\d*$/i },
+    magasin:   { re: /^Magasin\d*$/i },
+    kultur:    { re: /kulturminne/i },
+    bratthet:  { re: /bratthet|helling/i, bad: /wmts|kast/i },
+    overvann:  { re: /overvann/i }
+  };
+
+  function fetchT(url, opts) {
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var o = Object.assign({}, opts || {});
+    if (ctl) o.signal = ctl.signal;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
+    return fetch(url, o).then(function (r) { clearTimeout(timer); return r; }, function (e) { clearTimeout(timer); throw e; });
+  }
+
+  function loadCatalog(host) {
+    return fetchT(host + '?f=json').then(function (r) { return r.json(); }).then(function (j) {
+      var list = (j.services || []).filter(function (s) { return s.type === 'MapServer'; }).map(function (s) { return { host: host, name: s.name }; });
+      return Promise.all((j.folders || []).map(function (f) {
+        return fetchT(host + '/' + f + '?f=json').then(function (r) { return r.json(); }).then(function (jj) {
+          return (jj.services || []).filter(function (s) { return s.type === 'MapServer'; }).map(function (s) { return { host: host, name: s.name }; });
+        }).catch(function () { return []; });
+      })).then(function (arrs) { return list.concat([].concat.apply([], arrs)); });
+    });
+  }
+
+  var catalogP = null, svcCache = {};
+  function catalog() {
+    if (!catalogP) {
+      catalogP = Promise.all(HOSTS.map(function (h) { return loadCatalog(h).catch(function () { return []; }); }))
+        .then(function (a) { return [].concat.apply([], a); });
+    }
+    return catalogP;
+  }
+  function verOf(n) { var m = /(\d+)$/.exec(n.split('/').pop()); return m ? parseInt(m[1], 10) : 0; }
+
+  function resolveSvc(key) {
+    if (svcCache[key]) return svcCache[key];
+    var spec = SVC[key];
+    svcCache[key] = catalog().then(function (cat) {
+      var c = cat.filter(function (s) { return spec.re.test(s.name.split('/').pop()); });
+      if (!c.length) return spec.fb ? { url: HOSTS[0] + '/' + spec.fb + '/MapServer', name: spec.fb, guess: true } : null;
+      c.sort(function (a, b) {
+        var h = HOSTS.indexOf(a.host) - HOSTS.indexOf(b.host); if (h) return h;
+        var ba = spec.bad && spec.bad.test(a.name) ? 1 : 0, bb = spec.bad && spec.bad.test(b.name) ? 1 : 0; if (ba - bb) return ba - bb;
+        var v = verOf(b.name) - verOf(a.name); if (v) return v;
+        return a.name.length - b.name.length;
+      });
+      return { url: c[0].host + '/' + c[0].name + '/MapServer', name: c[0].name.split('/').pop() };
+    });
+    return svcCache[key];
+  }
+
+  /* Kartlag som vises i kartet og tas med i PDF. layers = regex mot lagnavn i tjenesten. */
+  var OV = [
+    { name: 'Steg 1: Flomsoner, analyseområder', svc: 'flomsone', layers: /analyse/i },
+    { name: 'Steg 1: Flomsone 20-årsflom', svc: 'flomsone', layers: /^flomsone_?20ars_?flom$/i },
+    { name: 'Steg 1: Flomsone 200-årsflom', svc: 'flomsone', layers: /^flomsone_?200ars_?flom$/i },
+    { name: 'Steg 1: Flomsone 200-årsflom med klimapåslag', svc: 'flomsone', layers: /^flomsone_?200ars_?flom_?klima$/i },
+    { name: 'Steg 1: Flomsone 1000-årsflom', svc: 'flomsone', layers: /^flomsone_?1000ars_?flom$/i },
+    { name: 'Steg 2: Aktsomhetskart flom', svc: 'flomakt', layers: /akt/i, not: /dekning/i },
+    { name: 'Steg 4: Overvann (aktsomhet)', svc: 'overvann' },
+    { name: 'Steg 5: Faresoner skred i bratt terreng', svc: 'skredfare' },
+    { name: 'Steg 6: Aktsomhet jord- og flomskred', svc: 'jordflom', not: /dekning|kartlagt|kartblad/i },
+    { name: 'Steg 6: Aktsomhet snøskred (S3)', svc: 'sno', layers: /S3/i },
+    { name: 'Steg 6: Aktsomhet steinsprang', svc: 'stein', layers: /akt|utl|løs|los/i, not: /kartlagt|ikke/i },
+    { name: 'Steg 6: Tidligere skredhendelser', svc: 'hendelse' },
+    { name: 'Steg 7: Hellingskart', svc: 'bratthet', op: 0.6 },
+    { name: 'Steg 8: Snøskred S2 uten skogeffekt', svc: 'sno', layers: /S2.*u_?skog/i },
+    { name: 'Steg 8: Snøskred S2 med skogeffekt', svc: 'sno', layers: /S2.*m_?skog/i },
+    { name: 'Steg 8: Skog med betydning for snøskredfare', svc: 'sno', layers: /skog_med/i },
+    { name: 'Steg 9: Fjellskred', svc: 'fjellskred' },
+    { name: 'Steg 10: Kvikkleiresoner (risikoklasse)', svc: 'kvsone', layers: /risiko/i, op: 0.8, on: true },
+    { name: 'Steg 10: Kvikkleiresoner (faregrad)', svc: 'kvsone', layers: /faregrad/i, op: 0.8 },
+    { name: 'Steg 11: Aktsomhetskart kvikkleireskred', svc: 'kvaakt', on: true },
+    { name: 'Steg 13: Vassdrag (Elvenett)', svc: 'elv', op: 0.9 },
+    { name: 'Steg 14: Vernede vassdrag', svc: 'vern' },
+    { name: 'Steg 15: Nettanlegg', svc: 'nett', op: 0.9 },
+    { name: 'Steg 15: Reguleringsmagasin', svc: 'magasin' },
+    { name: 'Steg 16: Vassdrags- og energirelaterte kulturminner', svc: 'kultur', op: 0.9 }
+  ];
+
+  var ovCache = {};
+  function resolveOverlay(ov) {
+    if (ovCache[ov.name]) return ovCache[ov.name];
+    ovCache[ov.name] = resolveSvc(ov.svc).then(function (s) {
+      if (!s) return null;
+      if (!ov.layers && !ov.not) return { url: s.url, ids: null, svc: s.name };
+      return getLayers(s.url).then(function (layers) {
+        var ids = layers.filter(function (l) {
+          return l.geometryType && !(l.subLayerIds && l.subLayerIds.length) && (!ov.layers || ov.layers.test(l.name)) && !(ov.not && ov.not.test(l.name));
+        }).map(function (l) { return l.id; });
+        if (!ids.length) return null;
+        return { url: s.url, ids: ids, svc: s.name };
+      });
+    }).catch(function () { return null; });
+    return ovCache[ov.name];
+  }
+
+    function ovHasHit(ov, esri, gType) {
+    return resolveOverlay(ov).then(function (r) {
+      if (!r) return false;
+      var idsP = r.ids ? Promise.resolve(r.ids) : getLayers(r.url).then(function (layers) {
+        return layers.filter(function (l) { return l.geometryType && !(l.subLayerIds && l.subLayerIds.length); }).map(function (l) { return l.id; });
+      });
+      return idsP.then(function (ids) {
+        if (!ids.length) return false;
+        return Promise.all(ids.map(function (id) {
+          return arcQuery(r.url + '/' + id, esri, gType, false, { countOnly: true, dist: PDF_LAYER_BUFFER_M }).then(function (j) { return (j.count || 0) > 0; }).catch(function () { return false; });
+        })).then(function (flags) { return flags.some(Boolean); });
+      });
+    }).catch(function () { return false; });
+  }
+
+  function ctlLabel(name) { return name.replace(/^Steg\s*\d+:\s*/, ''); }
+
+  function initOverlays() {
+    var ctl = {};
+    OV.forEach(function (ov) {
+      ov.group = L.layerGroup();
+      ov.inner = null;
+      ov.group.on('add', function () {
+        resolveOverlay(ov).then(function (r) {
+          if (!map.hasLayer(ov.group)) return;
+          if (!r) { toast('Fant ikke kartlaget «' + ov.name + '» hos NVE.'); return; }
+          if (!ov.inner) {
+            var o = { url: r.url, opacity: ov.op || 0.7, attribution: '&copy; NVE' };
+            if (r.ids) o.layers = r.ids;
+            ov.inner = L.esri.dynamicMapLayer(o);
+          }
+          ov.group.addLayer(ov.inner);
+        });
+      });
+      ov.group.on('remove', function () { if (ov.inner) ov.group.removeLayer(ov.inner); });
+      ctl[ctlLabel(ov.name)] = ov.group;
+      if (ov.on) ov.group.addTo(map);
+    });
+    return ctl;
+  }
+
+  /* ---------- Kart ---------- */
+  var map = L.map('map').setView([64.5, 13], 5);
+
+  var kvTopo = L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',
+    { maxZoom: 18, attribution: '&copy; <a href="https://www.kartverket.no">Kartverket</a>' });
+  var kvGra = L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png',
+    { maxZoom: 18, attribution: '&copy; <a href="https://www.kartverket.no">Kartverket</a>' });
+  var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+  var eiendom = L.tileLayer.wms('https://wms.geonorge.no/skwms1/wms.matrikkel', {
+    layers: 'eiendomsgrense', format: 'image/png', transparent: true, version: '1.3.0',
+    attribution: '&copy; <a href="https://www.kartverket.no">Kartverket</a> (Matrikkelen)'
+  });
+
+  kvTopo.addTo(map);
+  eiendom.addTo(map);
+  var tileErrors = 0;
+  kvTopo.on('tileerror', function () {
+    tileErrors++;
+    if (tileErrors === 6 && map.hasLayer(kvTopo)) {
+      map.removeLayer(kvTopo);
+      osm.addTo(map);
+      toast('Bakgrunnskartet fra Kartverket svarte ikke. Byttet til OpenStreetMap.');
+    }
+  });
+
+  var overlays = initOverlays();
+  overlays['Eiendomsgrenser'] = eiendom;
+  L.control.layers({ 'Kartverket topografisk': kvTopo, 'Kartverket gråtone': kvGra, 'OpenStreetMap': osm }, overlays, { position: 'topright' }).addTo(map);
+  L.control.scale({ metric: true, imperial: false }).addTo(map);
+
+  var shapeGroup = L.layerGroup().addTo(map);
+  var extentGroup = L.layerGroup().addTo(map);
+
+  /* ---------- Hjelpefunksjoner ---------- */
+  var toastTimer;
+  function toast(msg) {
+    var t = $('#toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.style.display = 'none'; }, 5000);
+  }
+
+  function closeRing(r) {
+    var a = r.slice(), f = a[0], l = a[a.length - 1];
+    if (f[0] !== l[0] || f[1] !== l[1]) a.push([f[0], f[1]]);
+    return a;
+  }
+  function ensureClockwise(ring) {
+    var s = 0;
+    for (var i = 0; i < ring.length - 1; i++) s += (ring[i + 1][0] - ring[i][0]) * (ring[i + 1][1] + ring[i][1]);
+    return s > 0 ? ring : ring.slice().reverse();
+  }
+  function circleRing(lat, lng, r) {
+    var n = 64, pts = [];
+    var dLat = r / 111320;
+    var dLng = r / (111320 * Math.cos(lat * Math.PI / 180));
+    for (var i = 0; i < n; i++) {
+      var a = 2 * Math.PI * i / n;
+      pts.push([lng + dLng * Math.cos(a), lat + dLat * Math.sin(a)]);
+    }
+    pts.push(pts[0]);
+    return pts;
+  }
+  function fmtArea(m2) {
+    var daa = m2 / 1000;
+    return daa.toLocaleString('nb-NO', { maximumFractionDigits: 1 }) + ' daa (' + Math.round(m2).toLocaleString('nb-NO') + ' m²)';
+  }
+  function findKey(attrs, re) {
+    var keys = Object.keys(attrs);
+    for (var i = 0; i < keys.length; i++) if (re.test(keys[i])) return keys[i];
+    return null;
+  }
+  function decode(info, attrs, key) {
+    var v = attrs[key];
+    var f = ((info && info.fields) || []).filter(function (x) { return x.name === key; })[0];
+    if (f && f.domain && f.domain.codedValues) {
+      var c = f.domain.codedValues.filter(function (c) { return c.code === v || String(c.code) === String(v); })[0];
+      if (c) return c.name;
+    }
+    if (v === null || v === undefined || v === '') return null;
+    return String(v);
+  }
+
+  /* ---------- Kall mot NVE / Kartverket ---------- */
+  var layerCache = {};
+    function getLayers(svc) {
+    if (layerCache[svc]) return Promise.resolve(layerCache[svc]);
+    return fetchT(svc + '/layers?f=json').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'Feil fra kartserveren');
+      layerCache[svc] = j.layers || [];
+      return layerCache[svc];
+    });
+  }
+
+    function arcQuery(layerUrl, esriGeom, gType, wantGeom, opts) {
+    opts = opts || {};
+    var body = new URLSearchParams({
+      f: wantGeom ? 'geojson' : 'json',
+      where: '1=1',
+      geometry: JSON.stringify(esriGeom),
+      geometryType: gType,
+      inSR: '4326',
+      outSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: wantGeom ? 'true' : 'false'
+    });
+    if (wantGeom) { body.set('geometryPrecision', '6'); body.set('maxAllowableOffset', '0.00002'); }
+    if (opts.dist) { body.set('distance', String(opts.dist)); body.set('units', 'esriSRUnit_Meter'); }
+    if (opts.count) body.set('resultRecordCount', String(opts.count));
+    if (opts.countOnly) { body.set('returnCountOnly', 'true'); body.set('returnGeometry', 'false'); }
+    return fetchT(layerUrl + '/query', { method: 'POST', body: body }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'Feil fra kartserveren');
+      return j;
+    });
+  }
+
+  function intersectArea(areaPoly, feat) {
+    try {
+      var x = turf.intersect(areaPoly, feat);
+      return x ? turf.area(x) : 0;
+    } catch (e) { return NaN; }
+  }
+
+    function analyseAkt(esri, gType, areaPoly, areaM2) {
+    return resolveSvc('kvaakt').then(function (svc) {
+      if (!svc) throw new Error('tjenesten ble ikke funnet hos NVE');
+      var base = svc.url;
+      return getLayers(base).then(function (layers) {
+        var polys = layers.filter(function (l) { return l.geometryType === 'esriGeometryPolygon'; });
+        var covL = polys.filter(function (l) { return /dekning/i.test(l.name); })[0];
+        var aktL = polys.filter(function (l) { return !/dekning/i.test(l.name); });
+        if (!aktL.length) throw new Error('fant ikke aktsomhetslag i tjenesten');
+        var wantGeom = !!areaPoly && areaM2 <= BIG_AREA_M2;
+
+        var jobs = aktL.map(function (l) {
+          return arcQuery(base + '/' + l.id, esri, gType, wantGeom).then(function (j) { return j.features || []; });
+        });
+        var covJob = covL
+          ? arcQuery(base + '/' + covL.id, esri, gType, false).then(function (j) {
+              var seen = {}, out = [];
+              (j.features || []).forEach(function (f) {
+                var k = findKey(f.attributes || {}, /status/i);
+                if (k) { var v = decode(covL, f.attributes, k); if (v && !seen[v]) { seen[v] = 1; out.push(v); } }
+              });
+              return out;
+            }).catch(function () { return []; })
+          : Promise.resolve([]);
+
+        return Promise.all([Promise.all(jobs), covJob]).then(function (res) {
+          var feats = [].concat.apply([], res[0]);
+          var overlap = null;
+          if (wantGeom && feats.length) {
+            overlap = 0;
+            for (var i = 0; i < feats.length; i++) {
+              var a = intersectArea(areaPoly, feats[i]);
+              if (isNaN(a)) { overlap = null; break; }
+              overlap += a;
+            }
+            if (overlap !== null) overlap = Math.min(overlap, areaM2);
+          }
+          return { ok: true, count: feats.length, overlap: overlap, dekning: res[1], skipped: !!areaPoly && !wantGeom };
+        });
+      });
+    }).catch(function (e) { return { ok: false, error: e.message }; });
+  }
+
+    function analyseSone(esri, gType) {
+    return resolveSvc('kvsone').then(function (svc) {
+      if (!svc) throw new Error('tjenesten ble ikke funnet hos NVE');
+      var base = svc.url;
+      return getLayers(base).catch(function () { return []; }).then(function (layers) {
+        var info = layers.filter(function (l) { return /kartlagtomr/i.test(l.name); })[0] ||
+          layers.filter(function (l) { return l.id === 2; })[0] || { id: 2, fields: [] };
+        return arcQuery(base + '/' + info.id, esri, gType, false).then(function (j) {
+          var list = (j.features || []).map(function (f) {
+            var a = f.attributes || {};
+            var kNavn = findKey(a, /navn|name/i);
+            var kId = findKey(a, /^(skred)?id$|objektid|sone_?id|skredid/i);
+            var kFare = findKey(a, /faregrad.*klasse/i) || findKey(a, /faregrad/i);
+            var kKons = findKey(a, /konsekvens.*klasse/i) || findKey(a, /konsekvens/i);
+            var kRisk = findKey(a, /risiko.*klasse/i) || findKey(a, /risiko/i);
+            var rows = Object.keys(a).filter(function (k) { return !/^(objectid|shape|globalid)/i.test(k); })
+              .map(function (k) { return [k, decode(info, a, k)]; })
+              .filter(function (r) { return r[1] !== null; });
+            return {
+              navn: kNavn ? decode(info, a, kNavn) : null,
+              id: kId ? decode(info, a, kId) : null,
+              faregrad: kFare ? decode(info, a, kFare) : null,
+              konsekvens: kKons ? decode(info, a, kKons) : null,
+              risiko: kRisk ? decode(info, a, kRisk) : null,
+              rows: rows
+            };
+          });
+          return { ok: true, list: list };
+        });
+      });
+    }).catch(function (e) { return { ok: false, error: e.message }; });
+  }
+
+  function reverseGeocode(lat, lon) {
+    var u = 'https://ws.geonorge.no/adresser/v1/punktsok?' + new URLSearchParams({ lat: lat, lon: lon, radius: 250, treffPerSide: 1, utkoordsys: 4258 });
+    return fetch(u).then(function (r) { return r.json(); }).then(function (j) { return (j.adresser || [])[0] || null; }).catch(function () { return null; });
+  }
+
+  /* ---------- Analyse ---------- */
+  var runId = 0, lastGeom = null;
+
+  var ptIcon = L.divIcon({ className: 'pt-marker', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+  function drawShape(g) {
+    if (editingArea) endEditArea(false);
+    shapeGroup.clearLayers();
+    analysisLayer = null;
+    var st = { color: '#16252D', weight: 2, dashArray: '6 4', fillOpacity: 0.06 };
+    if (g.kind === 'point') {
+      var marker = L.marker([g.lat, g.lng], { icon: ptIcon, keyboard: false }).addTo(shapeGroup);
+      var circle = g.r > 0 ? L.circle([g.lat, g.lng], Object.assign({ radius: g.r }, st)).addTo(shapeGroup) : null;
+      marker.on('drag', function () { if (circle) circle.setLatLng(marker.getLatLng()); });
+      analysisLayer = { kind: 'point', marker: marker, circle: circle };
+    } else {
+      analysisLayer = L.polygon(g.ring.map(function (p) { return [p[1], p[0]]; }), st).addTo(shapeGroup);
+    }
+    var editBtn = $('#editShape'), delBtn = $('#deleteShape');
+    if (editBtn) editBtn.disabled = !analysisLayer;
+    if (delBtn) delBtn.disabled = !analysisLayer;
+  }
+
+  function toEsriGeom(g) {
+    if (g.kind === 'point' && g.r === 0) {
+      return {
+        esri: { x: g.lng, y: g.lat, spatialReference: { wkid: 4326 } },
+        gType: 'esriGeometryPoint', areaPoly: null, areaM2: null, center: [g.lat, g.lng]
+      };
+    }
+    var ring = g.kind === 'point' ? circleRing(g.lat, g.lng, g.r) : closeRing(g.ring);
+    var areaPoly = turf.polygon([ring]);
+    var areaM2 = turf.area(areaPoly);
+    var c = turf.centroid(areaPoly).geometry.coordinates;
+    return {
+      esri: { rings: [ensureClockwise(ring)], spatialReference: { wkid: 4326 } },
+      gType: 'esriGeometryPolygon', areaPoly: areaPoly, areaM2: areaM2, center: [c[1], c[0]]
+    };
+  }
+
+  function runAnalysis(g) {
+    var my = ++runId;
+    lastGeom = g;
+    setTimeout(updateFrame, 0);
+    drawShape(g);
+    $('#out').innerHTML = '<div class="loading">Henter data fra NVE …</div>';
+
+    var geo = toEsriGeom(g);
+    var esri = geo.esri, gType = geo.gType, areaPoly = geo.areaPoly, areaM2 = geo.areaM2, center = geo.center;
+
+    Promise.all([
+      reverseGeocode(center[0], center[1]),
+      analyseAkt(esri, gType, areaPoly, areaM2),
+      analyseSone(esri, gType),
+      runSteps(esri, gType),
+      Promise.all([resolveSvc('kvaakt'), resolveSvc('kvsone')])
+    ]).then(function (res) {
+      if (my !== runId) return;
+      var by = res[3];
+      var ctx = { kvakt: res[1], kvsone: res[2], areaM2: areaM2, isPoint: !areaM2, all: by };
+      var services = usedServices(by);
+      res[4].forEach(function (x) { if (x && services.indexOf(x.name) < 0) services.push(x.name); });
+      render({ g: g, center: center, areaM2: areaM2, near: res[0], steps: evalSteps(by, ctx), services: services });
+    });
+  }
+
+  /* ---------- Generell spørring mot NVE-lag ---------- */
+  function queryTheme(q, esri, gType) {
+    return resolveSvc(q.svc).then(function (s) {
+      if (!s) return { ok: false, missing: true, error: 'tjenesten ble ikke funnet hos NVE' };
+      return getLayers(s.url).then(function (layers) {
+        var sel = layers.filter(function (l) {
+          return l.geometryType && !(l.subLayerIds && l.subLayerIds.length) &&
+            (!q.geom || q.geom.test(l.geometryType)) && (!q.layers || q.layers.test(l.name)) && !(q.not && q.not.test(l.name));
+        }).slice(0, 24);
+        if (!sel.length) return { ok: false, missing: true, svc: s.name, error: 'fant ingen passende kartlag i ' + s.name };
+        return Promise.all(sel.map(function (l) {
+          return arcQuery(s.url + '/' + l.id, esri, gType, false, { dist: q.dist, count: 25 }).then(function (j) {
+            var feats = j.features || [];
+            return { id: l.id, name: l.name, info: l, count: feats.length, more: !!j.exceededTransferLimit, rows: feats.slice(0, 8).map(function (f) { return f.attributes || {}; }) };
+          }).catch(function (e) { return { id: l.id, name: l.name, count: 0, error: e.message }; });
+        })).then(function (res) {
+          var good = res.filter(function (x) { return !x.error; });
+          if (!good.length) return { ok: false, svc: s.name, error: res[0].error };
+          return { ok: true, svc: s.name, layers: res, total: good.reduce(function (a, x) { return a + x.count; }, 0) };
+        });
+      });
+    }).catch(function (e) { return { ok: false, error: e.message }; });
+  }
+
+  /* ---------- Vurdering etter NVEs kartbaserte veileder for reguleringsplan ---------- */
+  function okq(r) { return !!(r && r.ok); }
+  function totq(r) { return okq(r) ? r.total : 0; }
+  function hitL(r, re) {
+    return okq(r) ? r.layers.filter(function (l) { return !l.error && l.count > 0 && (!re || re.test(l.name)); }) : [];
+  }
+  function nice(n) { return String(n).replace(/_/g, ' ').replace(/([a-zæøå])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim(); }
+  function joinList(a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' og ' + a[a.length - 1] : (a[0] || ''); }
+  function capList(a, n) { return a.length > n ? a.slice(0, n).concat(['flere kartlag']) : a; }
+  function retLabel(n) {
+    var m = /(\d+)\s*_?ars/i.exec(n), k = /klima/i.test(n);
+    return m ? m[1] + '-årsflom' + (k ? ' med klimapåslag' : '') : nice(n);
+  }
+  function unav(r, what) {
+    var miss = r && r.missing;
+    return {
+      st: miss ? 'manual' : 'error',
+      txt: what + (miss ? ' ble ikke funnet i NVEs karttjenester' : ' kunne ikke hentes') + (r && r.error ? ' (' + r.error + ')' : '') +
+        '. Vurder temaet manuelt i NVE Atlas eller i kommunens kartløsning.'
+    };
+  }
+
+  var STEPS = [
+    { n: 1, title: 'Flom (faresonekart)',
+      q: { an: { svc: 'flomsone', layers: /analyse/i }, fs: { svc: 'flomsone', layers: /flomsone_?\d+/i } },
+      ev: function (R) {
+        if (!okq(R.an) && !okq(R.fs)) return unav(R.fs || R.an, 'Flomsonekartet');
+        var zones = hitL(R.fs), inAn = totq(R.an) > 0;
+        var names = zones.map(function (l) { return retLabel(l.name); });
+        if (zones.length) return { st: 'hit', hits: names, txt: 'Analyseområdet berører flomsone fra NVEs flomsonekartlegging (' + joinList(names) + '). Sikkerhetskravet for tiltaket følger av TEK17 § 7-2 (sikkerhetsklasse F1: 20-årsflom, F2: 200-årsflom, F3: 1000-årsflom). Sjekk om flomsonekartet viser flom med klimapåslag, og avklar hensynet til klimaendringer (klimaprofil for fylket). Flomutsatt areal markeres med hensynssone H320 (pbl. §§ 4-3 og 12-6), og bestemmelsene må sikre at flomfaren er vurdert og ivaretatt på siste plannivå (pbl. § 28-1, TEK17 § 7-2). Flom fra sidevassdrag er normalt ikke analysert.' };
+        if (inAn) return { st: 'none', txt: 'Området ligger innenfor et analyseområde for flomsonekartlegging, men utenfor flomsonene. Sikkerhet mot flom fra hovedvassdraget er dermed dokumentert ivaretatt. Flom fra eventuelle sidevassdrag er normalt ikke analysert (se NVE veileder 3/2022). Området kan likevel være utsatt for erosjon og overvann.' };
+        return { st: 'none', txt: 'Området ligger utenfor kjente analyseområder for flomsonekartlegging, og NVE kjenner ikke til at flomfaren er kartlagt her. Vurder flomfaren videre med aktsomhetskartet for flom. Kommunen kan ha egne flomfareutredninger som er relevante for planområdet.' };
+      } },
+
+    { n: 2, title: 'Flom (aktsomhetskart)',
+      q: { ak: { svc: 'flomakt', layers: /akt/i, not: /dekning/i } },
+      ev: function (R) {
+        if (!okq(R.ak)) return unav(R.ak, 'Aktsomhetskartet for flom');
+        if (totq(R.ak) > 0) return { st: 'hit', txt: 'Området ligger innenfor aktsomhetsområde for flom. Aktsomhetskartet er grovt og kan ikke alene avklare reell fare: faren må avklares på siste plannivå etter sikkerhetskravene i TEK17 § 7-2. NVE anbefaler veileder 3/2022 «Sikkerhet mot flom» (vedlegg 1 og 2 beskriver forenklet og konservativ utredning). Bruk hensynssone H320 (pbl. §§ 4-3 og 12-6) med bestemmelser som sikrer at flomfaren er ivaretatt (pbl. § 28-1), og ta eventuelle risikoreduserende tiltak inn i planen. Sjekk «maksimal vannstandstigning» i tegnforklaringen; mangler verdien kan NVE veileder 3/2015 (side 13) brukes til estimat.' };
+        return { st: 'none', txt: 'Området ligger utenfor aktsomhetsområde for flom og vurderes i utgangspunktet som trygt for tiltak i sikkerhetsklasse F1 og F2. Tiltak i F3 (1000-årsflom) etter TEK17 § 7-2 første ledd krever alltid flomfareutredning, uavhengig av aktsomhetskartet. Kartet ivaretar ikke isgang, erosjon eller oppstuving ved bruer og kulverter, og kommunens lokalkunnskap må tas med. Langs vassdrag som har betydning for kapasiteten bør kommunen vurdere byggegrense på inntil 100 m (pbl. § 1-8 femte ledd).' };
+      } },
+
+    { n: 3, title: 'Erosjon langs vassdrag',
+      q: { el: { svc: 'elv', geom: /Polyline/i, dist: 20 } },
+      ev: function (R) {
+        if (!okq(R.el)) return { st: 'manual', txt: 'Kontroller manuelt om planområdet ligger i sikkerhetssone for erosjon: avstanden fra topp elveskråning til bebyggelse bør være minst lik skråningens høyde og minimum 20 m (TEK17 § 7-2 med veiledning). Kravet gjelder uavhengig av avstand for flom. Er området innenfor sonen, må tiltak plasseres i sikker avstand eller skråningen sikres mot erosjon.' };
+        if (totq(R.el) > 0) return { st: 'hit', txt: 'Elv eller bekk er registrert innenfor 20 m fra analyseområdet. Kontroller om tiltaket ligger i sikkerhetssone for erosjon: avstanden fra topp elveskråning bør være minst lik skråningens høyde og minimum 20 m (TEK17 § 7-2 med veiledning), uavhengig av avstand for flom. Kartlaget viser bare elveløpet, ikke skråningshøyden, så dette må verifiseres i terrengmodell. Ligger området i sikkerhetssonen, må tiltak plasseres i sikker avstand eller skråningen sikres mot erosjon; slik sikring kan kreve vurdering etter vannressursloven.' };
+        return { st: 'none', txt: 'Ingen registrerte elver eller bekker innenfor 20 m fra analyseområdet. Små vassdrag kan mangle i kartlaget, så lokale forhold bør likevel vurderes ved elveskråninger i løsmasser.' };
+      } },
+
+    { n: 4, title: 'Overvannsflom',
+      q: { ov: { svc: 'overvann', geom: /Polygon/i } },
+      ev: function (R) {
+        var base = 'Kommunen bestemmer hva som er tilstrekkelig sikkerhet (TEK17 § 7-1); NVEs anbefalte sikkerhetsnivå står i kap. 4.1 i veileder 4/2022. ';
+        if (okq(R.ov) && totq(R.ov) > 0) return { st: 'hit', hits: hitL(R.ov).map(function (l) { return nice(l.name); }), txt: 'Analyseområdet har treff i kartlag for overvann. ' + base + 'Faren må avklares på siste plannivå, ofte med hydraulisk overflatemodell som viser dybde (D), vannhastighet (V) og produktet DV (NVE veileder 2/2023 kap. 3.2). NVE anbefaler å styre arealbruken slik at nye byggverk ikke åpnes i områder med kartlagt fare. Bruk hensynssone H320 (pbl. §§ 4-3 og 12-6) med bestemmelser som sikrer at faren er ivaretatt (pbl. § 28-1, TEK17 § 7-1), og vurder om avrenning til vassdrag kan øke flomfaren. Viktige flomveier bør kartlegges og avmerkes i plankartet, og bør ikke bebygges. Der det er aktuelt bør planen legge til rette for å åpne lukkede bekker.' };
+        return { st: 'manual', txt: base + 'Sjekk kommunens aktsomhetskart for overvann. Finnes det ikke, kan dreneringslinjer og lavpunkt kartlegges med GIS (NVE veileder 2/2023). Aktsomhetskart for overvann kan være unøyaktige, og lokale terrengforhold bør drøftes før fare kan utelukkes (veileder 2/2023 kap. 3.1.5).' };
+      } },
+
+    { n: 5, title: 'Skred i bratt terreng (faresonekart)',
+      q: {
+        fz: { svc: 'skredfare', geom: /Polygon/i, not: /kartlagt|dekning|utredning|tegnforklaring/i },
+        cv: { svc: 'skredfare', geom: /Polygon/i, layers: /kartlagt|dekning|utredning/i }
+      },
+      ev: function (R) {
+        if (!okq(R.fz)) return unav(R.fz, 'Faresonekartet for skred i bratt terreng');
+        var h = hitL(R.fz), names = capList(h.map(function (l) { return nice(l.name); }), 8);
+        if (h.length) return { st: 'hit', hits: names, txt: 'Analyseområdet berører kartlagt faresone for skred i bratt terreng (' + joinList(names) + '). Sikkerhetskravene følger av TEK17 § 7-3, og veiledningen til bestemmelsen viser hvilke sikkerhetsklasser (S1–S3) ulike tiltak faller inn under. Ligger tiltaket innenfor aktuell faresone, må risikoreduserende tiltak vurderes. Kartleggingen må være utført etter NVEs veileder for sikkerhet mot skred i bratt terreng.' };
+        if (totq(R.cv) > 0) return { st: 'none', txt: 'Området ligger innenfor kartlagt område, men utenfor faresone. Sikkerhet mot skred regnes da som dokumentert ivaretatt. Faresonekartene er ikke en komplett oversikt, men viser soner NVE har fått tilgang til.' };
+        return { st: 'none', txt: 'Ingen treff i faresonekart for skred i bratt terreng. Kartet er ikke komplett, og det er ikke gjort farekartlegging som er kjent for NVE i området. Det kan likevel være fare for skred: vurder aktsomhetskartene for skred i bratt terreng.' };
+      } },
+
+    { n: 6, title: 'Skred i bratt terreng (aktsomhetskart)',
+      q: {
+        jf: { svc: 'jordflom', geom: /Polygon/i, not: /dekning|kartlagt|kartblad|tegnforklaring/i },
+        sn: { svc: 'sno', geom: /Polygon/i, not: /dekning|kartlagt|tegnforklaring/i },
+        st: { svc: 'stein', geom: /Polygon/i, not: /kartlagt|ikke|tegnforklaring/i },
+        he: { svc: 'hendelse' }
+      },
+      ev: function (R) {
+        var all = [R.jf, R.sn, R.st, R.he];
+        if (!all.some(okq)) return unav(R.jf || R.sn, 'Aktsomhetskartene for skred');
+        var types = [];
+        if (totq(R.jf) > 0) types.push('jord- og flomskred');
+        if (hitL(R.sn, /^(?!.*skog_?med)/i).length) types.push('snøskred');
+        if (totq(R.st) > 0) types.push('steinsprang');
+        if (totq(R.he) > 0) types.push('registrerte skredhendelser');
+        var miss = [['jord- og flomskred', R.jf], ['snøskred', R.sn], ['steinsprang', R.st], ['skredhendelser', R.he]].filter(function (x) { return !okq(x[1]); }).map(function (x) { return x[0]; });
+        var note = miss.length ? ' Merk: kartlag for ' + joinList(miss) + ' kunne ikke hentes og må sjekkes manuelt.' : '';
+        if (types.length) return { st: 'hit', hits: types, txt: 'Analyseområdet berører aktsomhetsområde eller registrert hendelse (' + joinList(types) + '). Før planen sendes på høring må det dokumenteres at sikkerheten mot skred i bratt terreng er ivaretatt etter TEK17 § 7-3. Reell fare må avklares gjennom utredning, og NVE anbefaler veilederen «Utredning av sikkerhet mot skred i bratt terreng». For tiltak i sikkerhetsklasse S3 skal kartlaget S3_snøskred legges til grunn; for S1 og S2 kan snøskredområdet reduseres ved en egen lokal vurdering av snøskredfaren.' + note };
+        return { st: 'none', txt: 'Analyseområdet ligger utenfor aktsomhetsområdene for jord- og flomskred, snøskred og steinsprang, og utenfor kjente skredhendelser. Terrengforhold som ikke fanges opp av aktsomhetskartene kan likevel medføre fare. Tiltak som omfattes av TEK17 § 7-3 første ledd krever alltid konkret skredvurdering.' + note };
+      } },
+
+    { n: 7, title: 'Skred i bratt terreng (andre aktsomhetsområder)',
+      ev: function () {
+        return { st: 'manual', txt: 'Sjekk hellingskartet (kartlaget «Hellingskart»). Steinsprang kan løsne fra terreng med 45–60° (oransje) og 60–90° (rød) helling, og høydemodellen bak aktsomhetskartet er for grov til å fange skrenter lavere enn omtrent 50 m. Sørpeskred og mindre jord- og flomskred kan følge bekkeløp: se etter bekker og vannveier brattere enn 10° i eller over planområdet, der en sone på 20 m til hver side regnes som aktsomhetsområde. Se også etter skredvifter (NVE faktaark 2/2013), gjerne med skyggerelieff. Berøres tiltaket av slike forhold, må sikkerhet mot skred dokumenteres etter TEK17 § 7-3.' };
+      } },
+
+    { n: 8, title: 'Snøskred (lokal vurdering)',
+      ev: function (R, ctx) {
+        var sn = (ctx.all[6] || {}).sn;
+        if (!okq(sn)) return { st: 'na', txt: 'Snøskredkartene var ikke tilgjengelige, så lokal vurdering er ikke gjort.' };
+        var snowHit = hitL(sn, /^(?!.*skog_?med)/i).length > 0;
+        if (!snowHit) return { st: 'na', txt: 'Ikke aktuelt: ingen treff i aktsomhetsområde for snøskred.' };
+        var s3 = hitL(sn, /S3/i).length > 0;
+        var s2u = hitL(sn, /S2.*u_?skog/i).length > 0, s2m = hitL(sn, /S2.*m_?skog/i).length > 0, sk = hitL(sn, /skog_?med/i).length > 0;
+        var lines = [];
+        if (s3) lines.push('Området berører kartlaget S3_snøskred, som skal legges til grunn for tiltak i sikkerhetsklasse S3.');
+        if (!s2u) return { st: 'none', hits: s3 ? ['S3'] : [], txt: (lines.join(' ') + ' Området ligger utenfor kartlaget S2_snøskred uten skogeffekt og kan da regnes som tilstrekkelig trygt for tiltak i sikkerhetsklasse S1 og S2 (forutsatt at området bare er dekket av aktsomhetsområde for snøskred, ikke av andre skredtyper).').trim() };
+        if (!s2m) return { st: 'manual', hits: ['S2 uten skogeffekt'].concat(sk ? ['skog med betydning'] : []), txt: (lines.join(' ') + ' Området ligger innenfor S2 uten skogeffekt, men ikke S2 med skogeffekt: skogen har betydning for skredfaren. For S2 kan kartlaget med skogeffekt brukes forutsatt restriksjoner på relevant areal i kartlaget «Skog med betydning for snøskredfare» (for eksempel å unngå flatehogst), sikret ved tinglyst privat avtale med grunneier eller vernskogforskrift. Det må også vurderes om skogen har samme skredreduserende effekt som da kartet ble modellert (2022). For S1 kan tiltak utenfor S2 med skogeffekt godkjennes uten restriksjoner på skog eller kartlegging av reell fare.').trim() };
+        return { st: 'hit', hits: ['S2 med skogeffekt'], txt: (lines.join(' ') + ' Området ligger innenfor S2_snøskred med skogeffekt. Reell fare for skred i bratt terreng må da alltid vurderes konkret, og NVE anbefaler veilederen «Utredning av sikkerhet mot skred i bratt terreng».').trim() };
+      } },
+
+    { n: 9, title: 'Fjellskred',
+      q: { fj: { svc: 'fjellskred', geom: /Polygon/i, not: /tegnforklaring|dekning|instrument/i } },
+      ev: function (R) {
+        if (!okq(R.fj)) return { st: 'manual', txt: 'Fjellskredfaresoner ble ikke funnet som karttjeneste. Sjekk NVE Atlas for faresoner fra det statlige kartleggingsprogrammet for fjellskred. Vises ingen faresoner, kan faren ses bort fra.' };
+        var h = hitL(R.fj);
+        if (h.length) return { st: 'hit', hits: h.map(function (l) { return nice(l.name); }), txt: 'Analyseområdet berører fareområde for fjellskred (direkte virkning eller sekundærvirkning som flodbølge). Finn gjentaksintervallet for fareområdene i kartet og vurder sikkerhetsklasse etter TEK17 § 7-3. For overvåkede fjellpartier kan unntaksreglene i TEK17 § 7-4 vurderes, men de gjelder ikke førsteleddstiltak, og alle vilkår må være oppfylt. Se NVEs veileder for sikkerhet mot fjellskred.' };
+        return { st: 'none', txt: 'Ingen kartlagte faresoner for fjellskred i området, og faren kan ses bort fra.' };
+      } },
+
+    { n: 10, title: 'Kvikkleireskred (kartlagte faresoner)',
+      ev: function (R, ctx) {
+        var sone = ctx.kvsone;
+        if (!sone.ok) return unav({ error: sone.error, missing: /ikke funnet/.test(sone.error || '') }, 'Kartet over kvikkleiresoner');
+        if (sone.list.length) {
+          var n = sone.list.length;
+          var t = (ctx.isPoint ? 'Punktet ligger i ' : 'Analyseområdet berører ') + n + (n === 1 ? ' kartlagt kvikkleiresone:' : ' kartlagte kvikkleiresoner:');
+          sone.list.forEach(function (z) {
+            var bits = [];
+            if (z.faregrad) bits.push('faregrad ' + z.faregrad);
+            if (z.konsekvens) bits.push('konsekvensklasse ' + z.konsekvens);
+            if (z.risiko) bits.push('risikoklasse ' + z.risiko);
+            t += '\n– Sone ' + (z.navn ? '«' + z.navn + '»' : (z.id ? 'ID ' + z.id : 'uten navn')) + (bits.length ? ': ' + bits.join(', ') : '') + '.';
+          });
+          t += '\nSikkerhet mot kvikkleireskred må utredes og ivaretas etter TEK17 § 7-3 og NVEs veileder 1/2019 «Sikkerhet mot kvikkleireskred». Kontakt geotekniker for videre vurderinger (krav til geoteknisk kompetanse: kap. 3.1 i veilederen). Sonene er klassifisert med faregrad, konsekvensklasse og risikoklasse.';
+          return { st: 'hit', hits: [n + (n === 1 ? ' sone' : ' soner')], txt: t, zones: sone.list };
+        }
+        return { st: 'none', txt: 'Området berører ingen kartlagte kvikkleiresoner. Faresonekartet omfatter bare soner med potensiell fare for større skred (høydeforskjell på 15 m og mer), og kvikkleire kan likevel finnes i områder som ikke er farekartlagt. Vurder aktsomhetskartet for kvikkleireskred.' };
+      } },
+
+    { n: 11, title: 'Kvikkleireskred (aktsomhetsområde)',
+      ev: function (R, ctx) {
+        var akt = ctx.kvakt;
+        if (!akt.ok) return unav({ error: akt.error, missing: /ikke funnet/.test(akt.error || '') }, 'Aktsomhetskartet for kvikkleireskred');
+        var dek = (akt.dekning && akt.dekning.length) ? ' Dekningsstatus for aktsomhetskartet: ' + akt.dekning.join(', ') + '.' : '';
+        if (akt.count > 0) {
+          var t;
+          if (!ctx.isPoint && akt.overlap !== null) { var pct = akt.overlap / ctx.areaM2 * 100; t = 'Om lag ' + (pct < 1 ? 'under 1' : Math.round(pct)) + ' % av analyseområdet (' + fmtArea(akt.overlap) + ') ligger innenfor aktsomhetsområde for kvikkleireskred.'; }
+          else if (!ctx.isPoint) t = 'Analyseområdet berører aktsomhetsområde for kvikkleireskred' + (akt.skipped ? ' (området er stort, så andel er ikke beregnet).' : '.');
+          else t = 'Punktet ligger innenfor aktsomhetsområde for kvikkleireskred.';
+          t += ' Området kan være utsatt for kvikkleireskred (områdeskred), og faren må vurderes nærmere ut fra lokale forhold. Aktsomhetskartet bygger på NGUs kart over mulighet for marin leire og terrengkriterier. Ved utbygging i sjø eller innsjø kan skred utløses i alle typer løsmasser, og konsekvensene er vanskelige å forutse (NVE veileder 1/2019 kap. 2.8).' + dek;
+          return { st: 'hit', hits: [(!ctx.isPoint && akt.overlap !== null) ? Math.max(1, Math.round(akt.overlap / ctx.areaM2 * 100)) + ' % av området' : 'treff'], txt: t };
+        }
+        return { st: 'none', txt: (ctx.isPoint ? 'Punktet' : 'Analyseområdet') + ' ligger utenfor aktsomhetsområde for kvikkleireskred og vurderes som tilstrekkelig sikkert med tanke på områdeskred av kvikkleire. Vurder også forholdet til vassdrag og grunnvann i nærheten. Utbygging i sjø eller innsjø må likevel vurderes særskilt (NVE veileder 1/2019 kap. 2.8).' + dek };
+      } },
+
+    { n: 12, title: 'Kvikkleire: lokale forhold',
+      ev: function (R, ctx) {
+        if (!(ctx.kvakt.ok && ctx.kvakt.count > 0)) return { st: 'na', txt: 'Ikke aktuelt: ingen treff i aktsomhetsområde for kvikkleireskred.' };
+        return { st: 'manual', txt: 'Lokale forhold kan utelukke områdeskredfare selv innenfor aktsomhetsområdet. (1) Dokumentert grunt til berg (under 2 m) eller berg i dagen, representativt for hele byggeområdet og områdene ovenfor, utelukker områdeskred; dokumenteres med kart over bergpunkter og bilder. (2) Dokumentert med egne profiler at området ligger lenger fra skråningsbunn enn 15 ganger total høydeforskjell (15×H), regnet med reell dybde til bunn, utelukker kvikkleireskred. Uten slik dokumentasjon må prosedyren i NVE veileder 1/2019 kap. 3.2 følges så langt som nødvendig.' };
+      } },
+
+    { n: 13, title: 'Vassdrag og grunnvann',
+      q: { el: { svc: 'elv', geom: /Polyline/i, dist: 100 } },
+      ev: function (R) {
+        if (!okq(R.el)) return { st: 'manual', txt: 'Vurder om planområdet ligger langs eller nær et vassdrag (fra store elver til minste bekk). Hvis ja, må tiltaket ta hensyn til vannressursloven.' };
+        if (totq(R.el) > 0) return { st: 'hit', txt: 'Vassdrag er registrert innenfor 100 m fra analyseområdet, og tiltaket må ta hensyn til vannressursloven: generell aktsomhetsplikt i vassdrag (vrl. § 5), forbud mot å hindre vannets løp uten hjemmel (§ 7), konsesjonsplikt ved tiltak som kan gi nevneverdig skade eller ulempe for allmenne interesser (§ 8), og kantvegetasjon langs vassdrag med årssikker vannføring (§ 11; se NVE veileder 2/2019). Økt overvannsavrenning kan gi flomproblemer nedstrøms, og nedbør bør fortsatt kunne infiltrere. Planer som legger til rette for vassdragstiltak vurderes av NVE for konsesjonsplikt. Grunnvann omfattes av vrl. kap. 8 (§§ 44–45). Se NVE veileder 1/2021.' };
+        return { st: 'none', txt: 'Ingen registrerte vassdrag innenfor 100 m fra analyseområdet, så temaet er trolig ikke relevant. Små bekker kan mangle i kartlaget.' };
+      } },
+
+    { n: 14, title: 'Vernede vassdrag',
+      q: { vv: { svc: 'vern' } },
+      ev: function (R) {
+        if (!okq(R.vv)) return { st: 'manual', txt: 'Sjekk i NVE Atlas om planområdet ligger i nedbørsfeltet til et vernet vassdrag (Verneplan for vassdrag).' };
+        if (totq(R.vv) > 0) return { st: 'hit', hits: hitL(R.vv).map(function (l) { return nice(l.name); }), txt: 'Planområdet har treff i kartlag for vernede vassdrag og ligger trolig i nedbørsfeltet til et vernet vassdrag. Vernet gjelder vassdragsbeltet (hovedelver, sideelver, større bekker, sjøer og tjern og et område på inntil 100 m langs sidene) og andre deler av nedbørfeltet som er faglig dokumentert viktige for verneverdien. Finn verneplanen for vassdraget, og se vannressursloven kap. 5 og rikspolitiske retningslinjer for vernede vassdrag.' };
+        return { st: 'none', txt: 'Ingen treff i kartlaget for vernede vassdrag. Temaet er ikke relevant for planen.' };
+      } },
+
+    { n: 15, title: 'Energianlegg',
+      q: {
+        nt: { svc: 'nett', layers: /sentral|region|transformator|trafo|stasjon|ledning|kabel|nett/i, not: /lokal|distribusjon|nettkart|tegnforklaring/i, dist: 50 },
+        mg: { svc: 'magasin', dist: 0 }
+      },
+      ev: function (R) {
+        if (!okq(R.nt) && !okq(R.mg)) return { st: 'manual', txt: 'Sjekk om planområdet berøres av reguleringsmagasin, trafostasjoner eller regionale/sentrale høyspentlinjer (NVE Atlas eller nettselskapet).' };
+        var h = hitL(R.nt).concat(hitL(R.mg));
+        if (h.length) return { st: 'hit', hits: h.map(function (l) { return nice(l.name); }), txt: 'Analyseområdet ligger nær energianlegg (treff innenfor 50 m i: ' + joinList(h.map(function (l) { return nice(l.name); })) + '). Større overføringsanlegg (sentral- og regionalnett med transformatorstasjoner) krever konsesjon etter energiloven og reguleres med hensynssone «Båndlegging etter annet lovverk» H740 (pbl. §§ 12-6 og 11-8 d). Mindre høyspenningsanlegg kan reguleres som teknisk infrastruktur (pbl. § 12-5 nr. 2). Reguleringsmagasin markeres som båndlagt område med arealformål «Bruk og vern av sjø og vassdrag». Minsteavstand til kraftledninger følger forskrift om elektriske forsyningsanlegg (i størrelsesorden 2–10 m; kontakt nettselskapet), og konsesjonen kan gi et rydde- og byggeforbudsbelte.' };
+        return { st: 'none', txt: 'Ingen treff på regionale eller sentrale høyspentlinjer, transformatorstasjoner eller reguleringsmagasin innenfor 50 m. Temaet er trolig ikke relevant for planen.' };
+      } },
+
+    { n: 16, title: 'Vassdrags- og energirelaterte kulturminner',
+      q: { kv: { svc: 'kultur' } },
+      ev: function (R) {
+        if (!okq(R.kv)) return { st: 'manual', txt: 'Sjekk i NVE Atlas om planområdet berører vassdrags- eller energirelaterte kulturminner (NVEs listeførte kulturminner).' };
+        if (totq(R.kv) > 0) return { st: 'hit', hits: hitL(R.kv).map(function (l) { return nice(l.name); }), txt: 'Analyseområdet har treff på vassdrags- eller energirelaterte kulturminner. Slike kulturminner har nasjonal verdi og må ivaretas på lik linje med andre kulturminner av nasjonal verdi. Vurder hensynssone H570 «Bevaring kulturmiljø». NVE skal være høringspart ved planer som berører kulturminnene.' };
+        return { st: 'none', txt: 'Ingen treff på vassdrags- eller energirelaterte kulturminner. Temaet er ikke relevant for plansaken.' };
+      } }
+  ];
+
+  function runSteps(esri, gType) {
+    var jobs = [];
+    STEPS.forEach(function (st) {
+      Object.keys(st.q || {}).forEach(function (k) {
+        jobs.push(queryTheme(st.q[k], esri, gType).then(function (r) { return { n: st.n, k: k, r: r }; }));
+      });
+    });
+    return Promise.all(jobs).then(function (res) {
+      var by = {};
+      res.forEach(function (x) { (by[x.n] = by[x.n] || {})[x.k] = x.r; });
+      return by;
+    });
+  }
+
+  function evalSteps(by, ctx) {
+    return STEPS.map(function (s) {
+      var res;
+      try { res = s.ev(by[s.n] || {}, ctx); }
+      catch (e) { res = { st: 'error', txt: 'Temaet kunne ikke vurderes (' + e.message + ').' }; }
+      res.n = s.n; res.title = s.title;
+      return res;
+    });
+  }
+
+  function usedServices(by, ctx) {
+    var set = {};
+    Object.keys(by).forEach(function (n) { Object.keys(by[n]).forEach(function (k) { var r = by[n][k]; if (r && r.svc) set[r.svc] = 1; }); });
+    return Object.keys(set);
+  }
+
+  /* ---------- Tekstlig analyse ---------- */
+  function describeWhere(r) {
+    var coords = r.center[0].toFixed(5) + ' N, ' + r.center[1].toFixed(5) + ' Ø';
+    var near = r.near ? 'nær ' + r.near.adressetekst + (r.near.kommunenavn ? ', ' + r.near.kommunenavn : '') : null;
+    var gb = (r.near && r.near.gardsnummer) ? ' (gnr/bnr ' + r.near.gardsnummer + '/' + r.near.bruksnummer + ' ved nærmeste adresse)' : '';
+    var kind = r.g.kind === 'point'
+      ? (r.g.r > 0 ? 'Sirkel med radius ' + r.g.r + ' m' : 'Punkt')
+      : 'Tegnet område';
+    return { short: kind + (near ? ' ' + near : ''), coords: coords, long: kind + (near ? ' ' + near + gb : '') + ', ' + coords };
+  }
+
+  function stepList(steps, st) {
+    return steps.filter(function (s) { return s.st === st; }).map(function (s) { return '– ' + s.title; });
+  }
+
+  /* Grupperer de 16 NVE-stegene i tema, slik at sluttteksten leses som et sammenhengende
+     dokument (egnet for planinitiativ/planbeskrivelse) i stedet for en trinnvis sjekkliste. */
+  var THEMES = [
+    { title: 'Flom og overvann', steps: [1, 2, 4] },
+    { title: 'Erosjon og vassdrag', steps: [3, 13, 14] },
+    { title: 'Skred i bratt terreng', steps: [5, 6, 7, 8, 9] },
+    { title: 'Kvikkleire', steps: [10, 11, 12] },
+    { title: 'Energianlegg og kulturminner', steps: [15, 16] }
+  ];
+
+  function buildText(r) {
+    var T = [], w = describeWhere(r), steps = r.steps;
+    var dato = new Date().toLocaleDateString('nb-NO', { day: 'numeric', month: 'long', year: 'numeric' });
+    T.push('Kartbasert vurdering for reguleringsplan: naturfare og vassdrag');
+    T.push('Analyseområde: ' + w.long + (r.areaM2 ? ', ' + fmtArea(r.areaM2) : '') + '. Kartgrunnlag hentet fra NVE ' + dato + ', vurdert etter NVEs kartbaserte veileder for reguleringsplan.');
+
+    var hit = stepList(steps, 'hit'), man = stepList(steps, 'manual'), err = stepList(steps, 'error');
+    var sum = 'Oppsummering\nTreff som krever oppfølging:' + (hit.length ? '\n' + hit.join('\n') : ' ingen.');
+    if (man.length) sum += '\nMå vurderes manuelt:\n' + man.join('\n');
+    if (err.length) sum += '\nKartlag som ikke kunne hentes (kjør analysen på nytt eller vurder manuelt):\n' + err.join('\n');
+    T.push(sum);
+
+    var byN = {};
+    steps.forEach(function (s) { byN[s.n] = s; });
+    THEMES.forEach(function (theme) {
+      var body = theme.steps
+        .map(function (n) { return byN[n]; })
+        .filter(function (s) { return s && s.st !== 'na'; })
+        .map(function (s) { return s.txt; });
+      if (!body.length) return;
+      T.push(theme.title + '\n' + body.join('\n\n'));
+    });
+
+    T.push('Forbehold\nTeksten er automatisk generert fra NVEs kartlag og må kvalitetssikres av planlegger eller fagkyndig før den brukes i planbeskrivelse, ROS-analyse eller saksbehandling. Aktsomhetskart er grove og avklarer ikke reell fare alene. Kartlagene oppdateres løpende, og «ingen treff» er ikke det samme som at det ikke finnes fare.');
+    T.push('Kilder\nNVE: Kartbasert veileder for reguleringsplan. NVE karttjenester: ' + (r.services.length ? r.services.join(', ') : 'ingen') + '. NVE veileder 1/2019 «Sikkerhet mot kvikkleireskred».');
+    return T.join('\n\n');
+  }
+
+  /* ---------- Visning ---------- */
+  var BADGE = { hit: 'Treff', manual: 'Vurder manuelt', none: 'Ingen treff', na: 'Ikke aktuelt', error: 'Ikke tilgjengelig' };
+
+  function zoneHtml(zones) {
+    return '<div class="zones">' + zones.map(function (z) {
+      var title = z.navn || (z.id ? 'Sone ' + z.id : 'Sone uten navn');
+      var sum = [z.faregrad && 'faregrad ' + z.faregrad, z.risiko && 'risiko ' + z.risiko].filter(Boolean).join(', ');
+      var rows = z.rows.map(function (rw) { return '<tr><td>' + esc(rw[0]) + '</td><td>' + esc(rw[1]) + '</td></tr>'; }).join('');
+      return '<details><summary>' + esc(title) + (sum ? ' <span style="color:var(--muted);font-weight:400">(' + esc(sum) + ')</span>' : '') + '</summary><table>' + rows + '</table></details>';
+    }).join('') + '</div>';
+  }
+
+  function render(r) {
+    var w = describeWhere(r), steps = r.steps;
+    var c = { hit: 0, manual: 0, error: 0 };
+    steps.forEach(function (s) { if (c[s.st] !== undefined) c[s.st]++; });
+
+    var rows = steps.map(function (s) {
+      var body = '<p>' + esc(s.txt).replace(/\n/g, '<br>') + '</p>';
+      if (s.hits && s.hits.length) body += '<p class="hits">Treff: ' + esc(s.hits.join(', ')) + '</p>';
+      if (s.zones) body += zoneHtml(s.zones);
+      return '<details class="step st-' + s.st + '"' + (s.st === 'hit' ? ' open' : '') + '>' +
+        '<summary><span class="no">Steg ' + s.n + '</span><span class="tt">' + esc(s.title) + '</span><span class="badge">' + BADGE[s.st] + '</span></summary>' +
+        '<div class="stepbody">' + body + '</div></details>';
+    }).join('');
+
+    $('#out').innerHTML =
+      '<section class="result">' +
+        '<h2>Resultat</h2>' +
+        '<p class="where">' + esc(w.short) + '<br>' + esc(w.coords) + (r.areaM2 ? ' · ' + esc(fmtArea(r.areaM2)) : '') + '</p>' +
+        '<p class="sum"><strong>' + c.hit + '</strong> steg med treff · <strong>' + c.manual + '</strong> må vurderes manuelt' + (c.error ? ' · <strong>' + c.error + '</strong> ikke tilgjengelig' : '') + '</p>' +
+        '<div class="steps">' + rows + '</div>' +
+        '<label for="report">Analysetekst (kan redigeres)</label>' +
+        '<textarea id="report" spellcheck="true"></textarea>' +
+        '<div class="actions"><button class="btn" id="copy" type="button">Kopier tekst</button><button class="btn ghost" id="print" type="button">Skriv ut</button></div>' +
+        '<p class="fine">Foreløpig oversikt fra NVEs kartlag, vurdert etter NVEs kartbaserte veileder. Må kvalitetssikres av planlegger eller fagkyndig før bruk.</p>' +
+      '</section>';
+
+    var ta = $('#report');
+    ta.value = buildText(r);
+    var fit = function () { ta.style.height = 'auto'; ta.style.height = Math.max(280, ta.scrollHeight + 4) + 'px'; };
+    ta.addEventListener('input', fit);
+    fit();
+
+    $('#copy').addEventListener('click', function () {
+      var done = function () { toast('Teksten er kopiert.'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(done, function () { ta.select(); document.execCommand('copy'); done(); });
+      else { ta.select(); document.execCommand('copy'); done(); }
+    });
+    $('#print').addEventListener('click', function () { fit(); window.print(); });
+
+    if (c.error) toast('Noen kartlag ble ikke hentet fra NVE. Sjekk nettverket, eller kjør siden fra en lokal webserver hvis nettleseren blokkerer kallene.');
+  }
+
+  /* ---------- Modus og tegning ---------- */
+  var mode = 'point', activeDraw = null, lastDrawEnd = 0, extentDraw = null;
+  var analysisLayer = null, editingArea = false;
+
+  function cancelDraw() { if (activeDraw) { activeDraw.disable(); activeDraw = null; } }
+
+  function syncRadiusSelect(r) {
+    var sel = $('#radius');
+    Array.prototype.forEach.call(sel.querySelectorAll('option[data-custom]'), function (o) { o.remove(); });
+    var opt = Array.prototype.filter.call(sel.options, function (o) { return parseInt(o.value, 10) === r; })[0];
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = String(r); opt.textContent = 'Radius ' + r + ' m'; opt.dataset.custom = '1';
+      sel.appendChild(opt);
+    }
+    sel.value = String(r);
+  }
+
+  function endEditArea(rerun) {
+    editingArea = false;
+    var btn = $('#editShape');
+    if (btn) { btn.textContent = 'Rediger området'; btn.setAttribute('aria-pressed', 'false'); }
+    if (!analysisLayer) return;
+    if (analysisLayer.kind === 'point') {
+      analysisLayer.marker.dragging.disable();
+      if (analysisLayer.marker._icon) L.DomUtil.removeClass(analysisLayer.marker._icon, 'editing');
+      if (analysisLayer.circle) analysisLayer.circle.editing.disable();
+      if (rerun) {
+        var ll = analysisLayer.marker.getLatLng();
+        var r = analysisLayer.circle ? Math.round(analysisLayer.circle.getRadius()) : 0;
+        if (r > 0) syncRadiusSelect(r);
+        runAnalysis({ kind: 'point', lat: ll.lat, lng: ll.lng, r: r });
+      }
+    } else {
+      analysisLayer.editing.disable();
+      if (rerun) {
+        var ll2 = analysisLayer.getLatLngs();
+        var pts = Array.isArray(ll2[0]) ? ll2[0] : ll2;
+        runAnalysis({ kind: 'polygon', ring: pts.map(function (p) { return [p.lng, p.lat]; }) });
+      }
+    }
+  }
+
+  $('#editShape').addEventListener('click', function () {
+    if (!analysisLayer) return;
+    if (editingArea) { endEditArea(true); return; }
+    cancelDraw();
+    editingArea = true;
+    this.textContent = 'Ferdig med redigering';
+    this.setAttribute('aria-pressed', 'true');
+    if (analysisLayer.kind === 'point') {
+      analysisLayer.marker.dragging.enable();
+      if (analysisLayer.marker._icon) L.DomUtil.addClass(analysisLayer.marker._icon, 'editing');
+      if (analysisLayer.circle) analysisLayer.circle.editing.enable();
+    } else {
+      analysisLayer.editing.enable();
+    }
+  });
+
+  function clearArea() {
+    if (!analysisLayer && !lastGeom) return;
+    runId++;
+    if (editingArea) endEditArea(false);
+    cancelDraw();
+    shapeGroup.clearLayers();
+    analysisLayer = null;
+    lastGeom = null;
+    $('#deleteShape').disabled = true;
+    $('#editShape').disabled = true;
+    $('#out').innerHTML = '<p class="empty">Klikk i kartet, søk etter en adresse eller tegn et område for å hente kartlag fra NVE.</p>';
+    updateFrame();
+    if ($('#mkExtent').value === 'analysis') mkStatus(noExtentMsg());
+    toast('Analyseområdet er slettet.');
+  }
+
+  $('#deleteShape').addEventListener('click', clearArea);
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Delete') return;
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (document.activeElement && document.activeElement.isContentEditable)) return;
+    clearArea();
+  });
+
+  function setMode(m) {
+    if (editingArea) endEditArea(false);
+    cancelDraw();
+    mode = m;
+    document.querySelectorAll('.seg button').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.mode === m ? 'true' : 'false'); });
+    $('#radiusWrap').style.display = m === 'point' ? '' : 'none';
+    map.getContainer().classList.toggle('pick', m === 'point');
+    if (m === 'polygon' || m === 'rectangle') {
+      var opts = { shapeOptions: { color: '#16252D', weight: 2, dashArray: '6 4', fillOpacity: 0.08 }, showArea: false };
+      activeDraw = m === 'rectangle' ? new L.Draw.Rectangle(map, opts) : new L.Draw.Polygon(map, Object.assign({ allowIntersection: false }, opts));
+      activeDraw.enable();
+    }
+  }
+
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () { setMode(b.dataset.mode); });
+  });
+
+  map.on(L.Draw.Event.CREATED, function (e) {
+    if (extentDraw) {
+      var cb = extentDraw;
+      extentDraw = null; activeDraw = null; lastDrawEnd = Date.now();
+      setTimeout(function () { setMode('point'); }, 300);
+      cb(e);
+      return;
+    }
+    var ll = e.layer.getLatLngs();
+    var pts = Array.isArray(ll[0]) ? ll[0] : ll;
+    lastDrawEnd = Date.now();
+    activeDraw = null;
+    setTimeout(function () { setMode('point'); }, 300);
+    runAnalysis({ kind: 'polygon', ring: pts.map(function (p) { return [p.lng, p.lat]; }) });
+  });
+
+  map.on('click', function (e) {
+    if (mode !== 'point' || editingArea || Date.now() - lastDrawEnd < 500) return;
+    runAnalysis({ kind: 'point', lat: e.latlng.lat, lng: e.latlng.lng, r: parseInt($('#radius').value, 10) });
+  });
+
+  $('#radius').addEventListener('change', function () {
+    if (lastGeom && lastGeom.kind === 'point') runAnalysis({ kind: 'point', lat: lastGeom.lat, lng: lastGeom.lng, r: parseInt(this.value, 10) });
+  });
+
+  /* ---------- Adressesøk (Kartverket) ---------- */
+  var q = $('#q'), hits = $('#hits'), debounce;
+  function closeHits() { hits.style.display = 'none'; q.setAttribute('aria-expanded', 'false'); }
+
+  q.addEventListener('input', function () {
+    clearTimeout(debounce);
+    var v = q.value.trim();
+    if (v.length < 3) { closeHits(); return; }
+    debounce = setTimeout(function () {
+      fetch('https://ws.geonorge.no/adresser/v1/sok?' + new URLSearchParams({ sok: v, fuzzy: 'true', treffPerSide: 6, utkoordsys: 4258 }))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var list = j.adresser || [];
+          if (!list.length) { hits.innerHTML = '<li>Ingen treff</li>'; }
+          else {
+            hits.innerHTML = list.map(function (a, i) {
+              return '<li role="option" data-i="' + i + '">' + esc(a.adressetekst) + '<small>' + esc((a.postnummer || '') + ' ' + (a.poststed || '')) + ', ' + esc(a.kommunenavn || '') + '</small></li>';
+            }).join('');
+            hits._list = list;
+          }
+          hits.style.display = 'block';
+          q.setAttribute('aria-expanded', 'true');
+        })
+        .catch(function () { closeHits(); toast('Adressesøket svarte ikke.'); });
+    }, 250);
+  });
+
+  hits.addEventListener('click', function (e) {
+    var li = e.target.closest('li[data-i]');
+    if (!li || !hits._list) return;
+    var a = hits._list[+li.dataset.i], p = a.representasjonspunkt;
+    q.value = a.adressetekst + ', ' + (a.poststed || a.kommunenavn || '');
+    closeHits();
+    setMode('point');
+    map.setView([p.lat, p.lon], 16);
+    runAnalysis({ kind: 'point', lat: p.lat, lng: p.lon, r: parseInt($('#radius').value, 10) });
+  });
+
+  q.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeHits(); });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.search')) closeHits(); });
+
+  setMode('point');
+  /* ---------- Kartproduksjon (PDF) ---------- */
+  var R_EARTH = 6378137, HALF = Math.PI * R_EARTH;
+  var SCALES = [250, 500, 1000, 2000, 2500, 5000, 7500, 10000, 15000, 20000, 25000, 50000, 75000, 100000, 250000, 500000];
+  var OSM_BASE = { name: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap-bidragsytere', maxZ: 19 };
+  var drawnBounds = null, series = [], frameRect = null, legendCache = {};
+  var extentLayer = null, editingExtent = false;
+
+  /* PDF-BEGIN (rene tegnefunksjoner, uten DOM) */
+  var PAPER = { A4: [210, 297], A3: [297, 420] };
+
+  function nf(n) { return Number(n).toLocaleString('nb-NO'); }
+  function pt(s) {
+    return String(s == null ? '' : s)
+      .replace(/[\u2013\u2014]/g, '-').replace(/\u2026/g, '...')
+      .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u00A0\u202F]/g, ' ');
+  }
+
+  function layoutFor(size, ori) {
+    var p = PAPER[size];
+    var W = ori === 'l' ? p[1] : p[0], H = ori === 'l' ? p[0] : p[1];
+    var m = 10, gap = 4, lay = { W: W, H: H, size: size, ori: ori };
+    if (ori === 'l') {
+      var sw = size === 'A3' ? 76 : 64;
+      lay.frame = { x: m, y: m, w: W - 2 * m - sw - gap, h: H - 2 * m };
+      lay.info = { x: m + lay.frame.w + gap, y: m, w: sw, h: H - 2 * m };
+      lay.side = true;
+    } else {
+      var sh = size === 'A3' ? 62 : 52;
+      lay.frame = { x: m, y: m, w: W - 2 * m, h: H - 2 * m - sh - gap };
+      lay.info = { x: m, y: m + lay.frame.h + gap, w: W - 2 * m, h: sh };
+      lay.side = false;
+    }
+    return lay;
+  }
+
+  function niceLen(scale, maxMm) {
+    var steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+    var best = steps[0];
+    steps.forEach(function (s) { if (s * 1000 / scale <= maxMm) best = s; });
+    return best;
+  }
+
+  function drawScaleBar(doc, x, y, scale, maxMm) {
+    var g = niceLen(scale, maxMm), mm = g * 1000 / scale;
+    var seg = mm >= 22 ? 4 : 2, sw = mm / seg;
+    var km = g >= 1000;
+    var lab = function (m) { return km ? nf(m / 1000) : nf(m); };
+    doc.setDrawColor(0); doc.setLineWidth(0.2);
+    for (var i = 0; i < seg; i++) {
+      doc.setFillColor(i % 2 === 0 ? 0 : 255);
+      doc.rect(x + i * sw, y, sw, 1.8, 'FD');
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(0);
+    doc.text('0', x, y + 5, { align: 'center' });
+    if (seg === 4) doc.text(lab(g / 2), x + mm / 2, y + 5, { align: 'center' });
+    doc.text(lab(g) + (km ? ' km' : ' m'), x + mm, y + 5, { align: 'center' });
+    return mm;
+  }
+
+  function drawNorth(doc, x, y, s) {
+    doc.setDrawColor(0); doc.setLineWidth(0.25);
+    doc.setFillColor(0);
+    doc.triangle(x, y, x - s * 0.25, y + s, x, y + s * 0.72, 'FD');
+    doc.setFillColor(255);
+    doc.triangle(x, y, x + s * 0.25, y + s, x, y + s * 0.72, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(0);
+    doc.text('N', x, y - 1, { align: 'center' });
+  }
+
+  function drawTitle(doc, spec, x, y, w) {
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+    var tl = doc.splitTextToSize(pt(spec.title), w);
+    doc.text(tl, x, y);
+    y += tl.length * 5.6 + 1;
+    if (spec.sub) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+      var sl = doc.splitTextToSize(pt(spec.sub), w);
+      doc.text(sl, x, y);
+      y += sl.length * 4 + 2;
+    }
+    return y;
+  }
+
+    function fmtM(m) { return m >= 1000 ? nf(m / 1000) + ' km' : nf(m) + ' m'; }
+  function gridStep(scale) {
+    var steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000];
+    for (var i = 0; i < steps.length; i++) if (steps[i] * 1000 / scale >= 30) return steps[i];
+    return steps[steps.length - 1];
+  }
+
+  function drawScale(doc, e, x, y, w) {
+    var lay = e.lay;
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    doc.text(pt('Målestokk 1:' + nf(e.scale)), x, y);
+    y += 3.6;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+    var notes = [lay.size + ', utskrift i 100 %', 'EUREF89 UTM sone ' + e.zone, 'Nord: rutenettnord'];
+    if (e.grid) notes.push('Rutenett: ' + fmtM(gridStep(e.scale)));
+    notes.forEach(function (t) { doc.text(pt(t), x, y); y += 3.2; });
+    y += 1;
+    drawNorth(doc, x + w - 5, y + 1, 9);
+    drawScaleBar(doc, x, y + 2, e.scale, Math.max(12, w - 15));
+    return y + 12;
+  }
+
+  function drawLegendBlock(doc, items, x, y, w, maxY, cols) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(0);
+    doc.text('Tegnforklaring', x, y + 3);
+    y += 7;
+    var colW = w / cols, col = 0, cx = x, cy = y, top = y;
+    function fits(h) {
+      if (cy + h <= maxY) return true;
+      if (col + 1 >= cols) return false;
+      col++; cx = x + col * colW; cy = top;
+      return cy + h <= maxY;
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(0);
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var hasIcon = it.img || it.draw;
+      var sh = it.h ? Math.min(5, Math.max(3.2, it.h * 0.2646)) : 3.5;
+      var sw = hasIcon ? (it.w ? Math.min(8, Math.max(3.2, it.w * 0.2646)) : 6) : 0;
+      var lines = doc.splitTextToSize(pt(it.label), colW - sw - (sw ? 2 : 0));
+      var hh = Math.max(sh, lines.length * 3.2);
+      if (!fits(hh + 1.2)) return;
+      if (it.img) {
+        try { doc.addImage(it.img, 'PNG', cx, cy, sw, sh); } catch (err) { /* hopper over ikon */ }
+      } else if (it.draw === 'area') {
+        doc.setDrawColor(22, 37, 45); doc.setLineWidth(0.4);
+        doc.setLineDashPattern([1.2, 0.8], 0); doc.rect(cx, cy, sw, sh); doc.setLineDashPattern([], 0);
+        doc.setDrawColor(0);
+      } else if (it.draw === 'line') {
+        doc.setDrawColor(120, 30, 20); doc.setLineWidth(0.5);
+        doc.line(cx, cy + sh / 2, cx + sw, cy + sh / 2);
+        doc.setDrawColor(0);
+      }
+      doc.text(lines, cx + sw + (sw ? 2 : 0), cy + sh / 2 + 1);
+      cy += hh + 1.2;
+    }
+  }
+
+  function pickLegendSwatch(ov, legendLayers) {
+    var candidates = (legendLayers || []).filter(function (l) {
+      return ov.layers ? ov.layers.indexOf(l.layerId) >= 0 : !/dekning/i.test(l.layerName);
+    });
+    for (var i = 0; i < candidates.length; i++) {
+      var g = (candidates[i].legend || [])[0];
+      if (g) return { img: 'data:' + (g.contentType || 'image/png') + ';base64,' + g.imageData, w: g.width, h: g.height };
+    }
+    return null;
+  }
+
+  function legendItems(ovs, includeArea) {
+    var out = ovs.map(function (ov) {
+      if (ov.type === 'wms') return { label: ctlLabel(ov.name), draw: 'line' };
+      if (ov.swatch) return { label: ctlLabel(ov.name), img: ov.swatch.img, w: ov.swatch.w, h: ov.swatch.h };
+      return { label: ctlLabel(ov.name) };
+    });
+    if (includeArea) out.push({ label: 'Analyseområde', draw: 'area' });
+    return out;
+  }
+
+  function drawInfo(doc, spec, base, items, idx, total) {
+    var e = spec.e, lay = e.lay, r = lay.info;
+    var dateStr = new Date().toLocaleDateString('nb-NO');
+    doc.setDrawColor(0); doc.setTextColor(0); doc.setLineWidth(0.3);
+    doc.rect(r.x, r.y, r.w, r.h);
+    var src = pt('Bakgrunnskart: ' + base.attr + '. Kartlag: NVE. Koordinatsystem: EUREF89 UTM sone ' + e.zone + ' (EPSG:' + e.epsg + '). Utarbeidet ' + dateStr + (total > 1 ? '. Kart ' + (idx + 1) + ' av ' + total : '') + '.');
+    var x, y, w, fl, fy;
+    if (lay.side) {
+      x = r.x + 4; w = r.w - 8; y = r.y + 8;
+      y = drawTitle(doc, spec, x, y, w);
+      doc.setLineWidth(0.15); doc.line(x, y, x + w, y); y += 6;
+      y = drawScale(doc, e, x, y, w);
+      doc.line(x, y, x + w, y); y += 5;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+      fl = doc.splitTextToSize(src, w);
+      fy = r.y + r.h - 4 - fl.length * 2.7;
+      drawLegendBlock(doc, items, x, y, w, fy - 3, 1);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(70);
+      doc.text(fl, x, fy + 2);
+      doc.setTextColor(0);
+    } else {
+      var pad = 4, c1 = r.w * 0.34, c2 = r.w * 0.22;
+      var x1 = r.x + pad, w1 = c1 - 1.5 * pad;
+      var x2 = r.x + c1 + pad, w2 = c2 - 2 * pad;
+      var x3 = r.x + c1 + c2 + pad, w3 = r.w - c1 - c2 - 2 * pad;
+      doc.setLineWidth(0.15);
+      doc.line(r.x + c1, r.y + 3, r.x + c1, r.y + r.h - 3);
+      doc.line(r.x + c1 + c2, r.y + 3, r.x + c1 + c2, r.y + r.h - 3);
+      drawTitle(doc, spec, x1, r.y + 8, w1);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5);
+      fl = doc.splitTextToSize(src, w1);
+      fy = r.y + r.h - 3 - fl.length * 2.7;
+      doc.setTextColor(70); doc.text(fl, x1, fy + 2); doc.setTextColor(0);
+      drawScale(doc, e, x2, r.y + 8, w2);
+      drawLegendBlock(doc, items, x3, r.y + 5, w3, r.y + r.h - 3, 2);
+    }
+  }
+
+    function drawGrid(doc, e) {
+    var f = e.lay.frame, step = gridStep(e.scale), k = 1000 / e.scale, E, N, x, y, label, tw;
+    var faint = null;
+    try { faint = new doc.GState({ opacity: 0.55, 'stroke-opacity': 0.55 }); } catch (err) { /* uten gjennomsiktighet */ }
+    doc.setDrawColor(40); doc.setLineWidth(0.1);
+    if (faint) doc.setGState(faint);
+    for (E = Math.ceil(e.x0 / step) * step; E < e.x1; E += step) { x = f.x + (E - e.x0) * k; doc.line(x, f.y, x, f.y + f.h); }
+    for (N = Math.ceil(e.y0 / step) * step; N < e.y1; N += step) { y = f.y + (e.y1 - N) * k; doc.line(f.x, y, f.x + f.w, y); }
+    if (faint) doc.setGState(new doc.GState({ opacity: 1, 'stroke-opacity': 1 }));
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+    for (E = Math.ceil(e.x0 / step) * step; E < e.x1; E += step) {
+      x = f.x + (E - e.x0) * k; label = pt(nf(E)); tw = doc.getTextWidth(label);
+      if (x - tw / 2 < f.x + 5 || x + tw / 2 > f.x + f.w - 5) continue;
+      doc.setFillColor(255); doc.rect(x - tw / 2 - 0.6, f.y + 0.4, tw + 1.2, 3, 'F');
+      doc.setTextColor(0); doc.text(label, x, f.y + 2.7, { align: 'center' });
+      doc.setFillColor(255); doc.rect(x - tw / 2 - 0.6, f.y + f.h - 3.4, tw + 1.2, 3, 'F');
+      doc.setTextColor(0); doc.text(label, x, f.y + f.h - 1.1, { align: 'center' });
+    }
+    for (N = Math.ceil(e.y0 / step) * step; N < e.y1; N += step) {
+      y = f.y + (e.y1 - N) * k; label = pt(nf(N)); tw = doc.getTextWidth(label);
+      if (y - tw / 2 < f.y + 5 || y + tw / 2 > f.y + f.h - 5) continue;
+      doc.setFillColor(255); doc.rect(f.x + 0.4, y - tw / 2 - 0.6, 3, tw + 1.2, 'F');
+      doc.setTextColor(0); doc.text(label, f.x + 2.9, y + tw / 2, { angle: 90 });
+      doc.setFillColor(255); doc.rect(f.x + f.w - 3.4, y - tw / 2 - 0.6, 3, tw + 1.2, 'F');
+      doc.setTextColor(0); doc.text(label, f.x + f.w - 0.6, y + tw / 2, { angle: 90 });
+    }
+  }
+
+    function drawMapPage(doc, spec, res, ovs, idx, total, includeArea) {
+    var e = spec.e, f = e.lay.frame;
+    doc.addImage(res.canvas.toDataURL('image/jpeg', 0.92), 'JPEG', f.x, f.y, f.w, f.h);
+    if (e.grid) drawGrid(doc, e);
+    doc.setDrawColor(0); doc.setLineWidth(0.4);
+    doc.rect(f.x, f.y, f.w, f.h);
+    drawInfo(doc, spec, res.base, legendItems(ovs, includeArea), idx, total);
+  }
+
+  function addTextPage(doc, text) {
+    doc.addPage('a4', 'portrait');
+    var W = 210, H = 297, m = 20, w = W - 2 * m, y = m + 4;
+    function need(h) { if (y + h > H - m) { doc.addPage('a4', 'portrait'); y = m + 4; } }
+    doc.setTextColor(0);
+    pt(text).split(/\n\s*\n/).forEach(function (b, bi) {
+      var lines = b.split('\n'), head = null;
+      if (bi === 0 && lines.length === 1) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+        var t = doc.splitTextToSize(lines[0], w);
+        need(t.length * 7);
+        doc.text(t, m, y); y += t.length * 7 + 3;
+        return;
+      }
+      if (lines.length > 1 && lines[0].length < 60 && !/[.:]$/.test(lines[0])) head = lines.shift();
+      if (head) { need(10); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(head, m, y); y += 6; }
+      doc.setFont('times', 'normal'); doc.setFontSize(11);
+      lines.forEach(function (ln) {
+        doc.splitTextToSize(ln, w).forEach(function (l2) { need(5.2); doc.text(l2, m, y); y += 5.2; });
+        y += 1;
+      });
+      y += 3;
+    });
+  }
+  /* PDF-END */
+
+  function toMerc(lat, lng) {
+    return [R_EARTH * lng * Math.PI / 180, R_EARTH * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
+  }
+  function fromMerc(x, y) {
+    return [(2 * Math.atan(Math.exp(y / R_EARTH)) - Math.PI / 2) * 180 / Math.PI, x / R_EARTH * 180 / Math.PI];
+  }
+
+    var GRS_F = 1 / 298.257222101, UTM_K0 = 0.9996;
+  var UN = GRS_F / (2 - GRS_F);
+  var UA = R_EARTH / (1 + UN) * (1 + UN * UN / 4 + Math.pow(UN, 4) / 64);
+  var U_ALPHA = [UN / 2 - 2 * UN * UN / 3 + 5 * Math.pow(UN, 3) / 16, 13 * UN * UN / 48 - 3 * Math.pow(UN, 3) / 5, 61 * Math.pow(UN, 3) / 240];
+  var U_BETA = [UN / 2 - 2 * UN * UN / 3 + 37 * Math.pow(UN, 3) / 96, UN * UN / 48 + Math.pow(UN, 3) / 15, 17 * Math.pow(UN, 3) / 480];
+  var U_DELTA = [2 * UN - 2 * UN * UN / 3 - 2 * Math.pow(UN, 3), 7 * UN * UN / 3 - 8 * Math.pow(UN, 3) / 5, 56 * Math.pow(UN, 3) / 15];
+  var atanh = Math.atanh || function (x) { return 0.5 * Math.log((1 + x) / (1 - x)); };
+
+  function utmCM(zone) { return zone * 6 - 183; }
+  /* Norge: sone 32 vest for 12°Ø, sone 33 mellom 12 og 24°Ø, sone 35 øst for 24°Ø */
+  function autoZone(lng) { return lng < 12 ? 32 : (lng < 24 ? 33 : 35); }
+
+  function toUTM(lat, lng, zone) {
+    var d2r = Math.PI / 180, phi = lat * d2r, dl = (lng - utmCM(zone)) * d2r;
+    var sp = Math.sin(phi), c = 2 * Math.sqrt(UN) / (1 + UN);
+    var t = Math.sinh(atanh(sp) - c * atanh(c * sp));
+    var xi1 = Math.atan2(t, Math.cos(dl)), eta1 = atanh(Math.sin(dl) / Math.sqrt(1 + t * t));
+    var xi = xi1, eta = eta1;
+    for (var j = 1; j <= 3; j++) {
+      xi += U_ALPHA[j - 1] * Math.sin(2 * j * xi1) * Math.cosh(2 * j * eta1);
+      eta += U_ALPHA[j - 1] * Math.cos(2 * j * xi1) * Math.sinh(2 * j * eta1);
+    }
+    return [500000 + UTM_K0 * UA * eta, UTM_K0 * UA * xi];
+  }
+
+  function fromUTM(E, N, zone) {
+    var d2r = Math.PI / 180, eta = (E - 500000) / (UTM_K0 * UA), xi = N / (UTM_K0 * UA);
+    var xi1 = xi, eta1 = eta, j;
+    for (j = 1; j <= 3; j++) {
+      xi1 -= U_BETA[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta);
+      eta1 -= U_BETA[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta);
+    }
+    var chi = Math.asin(Math.sin(xi1) / Math.cosh(eta1)), phi = chi;
+    for (j = 1; j <= 3; j++) phi += U_DELTA[j - 1] * Math.sin(2 * j * chi);
+    var lam = Math.atan2(Math.sinh(eta1), Math.cos(xi1));
+    return [phi / d2r, utmCM(zone) + lam / d2r];
+  }
+  function mkStatus(t) { $('#mkStatus').textContent = t; }
+
+  function analysisBounds() {
+    if (!lastGeom) return null;
+    var b;
+    if (lastGeom.kind === 'point') b = L.latLng(lastGeom.lat, lastGeom.lng).toBounds(Math.max(150, lastGeom.r * 2));
+    else b = L.latLngBounds(lastGeom.ring.map(function (p) { return [p[1], p[0]]; }));
+    var min = b.getCenter().toBounds(150);
+    b.extend(min.getSouthWest()); b.extend(min.getNorthEast());
+    return b.pad(0.25);
+  }
+
+  function noExtentMsg() {
+    var s = $('#mkExtent').value;
+    return s === 'analysis' ? 'Velg et analyseområde først (klikk i kartet, søk eller tegn).' : 'Tegn utsnittet i kartet først.';
+  }
+
+    function computeExtent() {
+    var src = $('#mkExtent').value;
+    var bounds = src === 'view' ? map.getBounds() : (src === 'analysis' ? analysisBounds() : drawnBounds);
+    if (!bounds) return null;
+    var lay = layoutFor($('#mkSize').value, $('#mkOri').value);
+    var fw = lay.frame.w, fh = lay.frame.h;
+    var zsel = $('#mkZone').value;
+    var zone = zsel === 'auto' ? autoZone(bounds.getCenter().lng) : parseInt(zsel, 10);
+    var pts = [[bounds.getSouth(), bounds.getWest()], [bounds.getNorth(), bounds.getWest()], [bounds.getNorth(), bounds.getEast()], [bounds.getSouth(), bounds.getEast()]]
+      .map(function (p) { return toUTM(p[0], p[1], zone); });
+    var xs = pts.map(function (p) { return p[0]; }), ys = pts.map(function (p) { return p[1]; });
+    var minx = Math.min.apply(null, xs), maxx = Math.max.apply(null, xs), miny = Math.min.apply(null, ys), maxy = Math.max.apply(null, ys);
+    var cx = (minx + maxx) / 2, cy = (miny + maxy) / 2;
+    var sel = $('#mkScale').value, scale;
+    if (sel === 'fit') {
+      var need = Math.max((maxx - minx) / (fw / 1000), (maxy - miny) / (fh / 1000));
+      scale = SCALES.filter(function (s) { return s >= need; })[0] || SCALES[SCALES.length - 1];
+    } else scale = parseInt(sel, 10);
+    var mw = fw / 1000 * scale, mh = fh / 1000 * scale;
+    return {
+      lay: lay, scale: scale, zone: zone, epsg: 25800 + zone, grid: $('#mkGrid').checked,
+      x0: cx - mw / 2, x1: cx + mw / 2, y0: cy - mh / 2, y1: cy + mh / 2, mw: mw, mh: mh
+    };
+  }
+
+    function updateFrame() {
+    if (frameRect) { map.removeLayer(frameRect); frameRect = null; }
+    if (!$('#maker').open) return;
+    var e = computeExtent();
+    $('#mkCrsInfo').textContent = e ? 'Utskriften bruker EUREF89 UTM sone ' + e.zone + ' (EPSG:' + e.epsg + ').' : '';
+    if (!e || !$('#mkFrame').checked) return;
+    var ring = [];
+    function seg(x0, y0, x1, y1) {
+      for (var i = 0; i < 20; i++) { var t = i / 20; ring.push(fromUTM(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, e.zone)); }
+    }
+    seg(e.x0, e.y0, e.x1, e.y0); seg(e.x1, e.y0, e.x1, e.y1); seg(e.x1, e.y1, e.x0, e.y1); seg(e.x0, e.y1, e.x0, e.y0);
+    frameRect = L.polygon(ring, { color: '#1F5F7A', weight: 2, fill: false, dashArray: '2 4', interactive: false }).addTo(map);
+  }
+
+  function activeBase() {
+    if (map.hasLayer(kvGra)) return { name: 'Kartverket gråtone', url: kvGra._url, attr: '© Kartverket', maxZ: 18 };
+    if (map.hasLayer(osm)) return OSM_BASE;
+    return { name: 'Kartverket topografisk', url: kvTopo._url, attr: '© Kartverket', maxZ: 18 };
+  }
+
+    function activeOverlays() {
+    return OV.filter(function (o) { return map.hasLayer(o.group); });
+  }
+
+  function loadImg(url) {
+    return new Promise(function (res, rej) {
+      var im = new Image();
+      im.crossOrigin = 'anonymous';
+      im.onload = function () { res(im); };
+      im.onerror = function () { rej(new Error('fliser')); };
+      im.src = url;
+    });
+  }
+
+  function drawTiles(ctx, e, W, H, base) {
+    var res = e.mw / W;
+    var z = Math.ceil(Math.log(156543.03392804097 / res) / Math.LN2);
+    z = Math.max(0, Math.min(base.maxZ, z));
+    var span, x0, x1, y0, y1;
+    for (;;) {
+      span = 2 * HALF / Math.pow(2, z);
+      x0 = Math.floor((e.x0 + HALF) / span); x1 = Math.floor((e.x1 + HALF) / span);
+      y0 = Math.floor((HALF - e.y1) / span); y1 = Math.floor((HALF - e.y0) / span);
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) <= 320 || z <= 0) break;
+      z--;
+    }
+    var n = Math.pow(2, z), jobs = [], x, y;
+    for (x = x0; x <= x1; x++) for (y = y0; y <= y1; y++) if (x >= 0 && y >= 0 && x < n && y < n) jobs.push({ x: x, y: y });
+    var idx = 0, failed = 0, pxPerM = W / e.mw;
+
+    function one(j) {
+      var url = base.url.replace('{z}', z).replace('{x}', j.x).replace('{y}', j.y);
+      return loadImg(url).then(function (im) {
+        var px = ((j.x * span - HALF) - e.x0) * pxPerM;
+        var py = (e.y1 - (HALF - j.y * span)) * pxPerM;
+        var sz = span * pxPerM;
+        ctx.drawImage(im, Math.floor(px), Math.floor(py), Math.ceil(sz) + 1, Math.ceil(sz) + 1);
+      });
+    }
+    function loop() {
+      if (idx >= jobs.length) return Promise.resolve();
+      return one(jobs[idx++]).catch(function () { failed++; }).then(loop);
+    }
+    var workers = [];
+    for (var k = 0; k < 8; k++) workers.push(loop());
+    return Promise.all(workers).then(function () {
+      if (jobs.length && failed > jobs.length * 0.5) throw new Error('Kunne ikke hente bakgrunnskart');
+    });
+  }
+
+    function fetchOverlay(ov, e, W, H, dpi) {
+    var p = new URLSearchParams({
+      f: 'image', bbox: [e.x0, e.y0, e.x1, e.y1].join(','), bboxSR: String(e.epsg), imageSR: String(e.epsg),
+      size: W + ',' + H, dpi: String(dpi), format: 'png32', transparent: 'true'
+    });
+    if (ov.layers) p.set('layers', 'show:' + ov.layers.join(','));
+    return fetch(ov.svc + '/export?' + p.toString()).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if ((r.headers.get('content-type') || '').indexOf('image') !== 0) throw new Error('svarte ikke med bilde');
+      return r.blob();
+    }).then(function (b) { return createImageBitmap(b); });
+  }
+
+    function fetchWmsOverlay(ov, e, W, H) {
+    var p = new URLSearchParams({
+      SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap', LAYERS: ov.layers, STYLES: '',
+      CRS: 'EPSG:' + e.epsg, BBOX: [e.x0, e.y0, e.x1, e.y1].join(','),
+      WIDTH: String(W), HEIGHT: String(H), FORMAT: 'image/png', TRANSPARENT: 'TRUE'
+    });
+    return fetch(ov.url + '?' + p.toString()).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if ((r.headers.get('content-type') || '').indexOf('image') !== 0) throw new Error('svarte ikke med bilde');
+      return r.blob();
+    }).then(function (b) { return createImageBitmap(b); });
+  }
+
+  function getLegend(svc) {
+    if (legendCache[svc]) return Promise.resolve(legendCache[svc]);
+    return fetch(svc + '/legend?f=json').then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'legend');
+      legendCache[svc] = j.layers || [];
+      return legendCache[svc];
+    });
+  }
+
+    function drawArea(ctx, e, W, H, dpi) {
+    if (!$('#mkArea').checked || !lastGeom) return;
+    var sx = W / e.mw, mm = dpi / 25.4;
+    function P(lat, lng) { var u = toUTM(lat, lng, e.zone); return [(u[0] - e.x0) * sx, (e.y1 - u[1]) * sx]; }
+    var pts;
+    if (lastGeom.kind === 'point') {
+      if (lastGeom.r > 0) pts = circleRing(lastGeom.lat, lastGeom.lng, lastGeom.r).map(function (p) { return P(p[1], p[0]); });
+      else {
+        var c = P(lastGeom.lat, lastGeom.lng);
+        ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#16252D'; ctx.lineWidth = 0.4 * mm;
+        ctx.beginPath(); ctx.arc(c[0], c[1], 1.3 * mm, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); ctx.restore();
+        return;
+      }
+    } else pts = lastGeom.ring.map(function (p) { return P(p[1], p[0]); });
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach(function (p, i) { if (i) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); });
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(22,37,45,0.06)'; ctx.fill();
+    ctx.strokeStyle = '#16252D'; ctx.lineWidth = 0.5 * mm; ctx.setLineDash([2.5 * mm, 1.5 * mm]); ctx.stroke();
+    ctx.restore();
+  }
+
+    /* Bakgrunnsfliser ligger i Web Mercator. De hentes til et hjelpelerret og omprojiseres til UTM
+     i små blokker; innenfor en blokk er avbildningen i praksis affin. */
+  function drawBaseUTM(ctx, e, W, H, base) {
+    var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity, i, j;
+    for (i = 0; i <= 8; i++) for (j = 0; j <= 8; j++) {
+      var ll = fromUTM(e.x0 + e.mw * i / 8, e.y0 + e.mh * j / 8, e.zone), m = toMerc(ll[0], ll[1]);
+      minx = Math.min(minx, m[0]); maxx = Math.max(maxx, m[0]); miny = Math.min(miny, m[1]); maxy = Math.max(maxy, m[1]);
+    }
+    var em = { x0: minx, x1: maxx, y0: miny, y1: maxy, mw: maxx - minx, mh: maxy - miny };
+    var latC = fromUTM((e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, e.zone)[0];
+    var mercRes = (e.mw / W) / Math.cos(latC * Math.PI / 180);
+    var Ws = Math.round(em.mw / mercRes), Hs = Math.round(em.mh / mercRes);
+    var k = Math.max(Ws, Hs) / 6000;
+    if (k > 1) { Ws = Math.round(Ws / k); Hs = Math.round(Hs / k); }
+    var sc = document.createElement('canvas');
+    sc.width = Ws; sc.height = Hs;
+    var sctx = sc.getContext('2d');
+    sctx.fillStyle = '#ffffff'; sctx.fillRect(0, 0, Ws, Hs);
+
+    return drawTiles(sctx, em, Ws, Hs, base).then(function () {
+      function srcPt(px, py) {
+        var u = fromUTM(e.x0 + px * e.mw / W, e.y1 - py * e.mh / H, e.zone), m = toMerc(u[0], u[1]);
+        return [(m[0] - em.x0) * Ws / em.mw, (em.y1 - m[1]) * Hs / em.mh];
+      }
+      var B = 64, bx, by;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      for (by = 0; by < H; by += B) for (bx = 0; bx < W; bx += B) {
+        var bw = Math.min(B, W - bx), bh = Math.min(B, H - by);
+        var s0 = srcPt(bx, by), s1 = srcPt(bx + bw, by), s2 = srcPt(bx, by + bh), s3 = srcPt(bx + bw, by + bh);
+        var a = (s1[0] - s0[0]) / bw, b = (s1[1] - s0[1]) / bw, c = (s2[0] - s0[0]) / bh, d = (s2[1] - s0[1]) / bh;
+        var det = a * d - b * c;
+        var A1 = d / det, B1 = -b / det, C1 = -c / det, D1 = a / det;
+        var E1 = bx - (A1 * s0[0] + C1 * s0[1]), F1 = by - (B1 * s0[0] + D1 * s0[1]);
+        var sx0 = Math.max(0, Math.floor(Math.min(s0[0], s1[0], s2[0], s3[0])) - 1);
+        var sy0 = Math.max(0, Math.floor(Math.min(s0[1], s1[1], s2[1], s3[1])) - 1);
+        var sx1 = Math.min(Ws, Math.ceil(Math.max(s0[0], s1[0], s2[0], s3[0])) + 1);
+        var sy1 = Math.min(Hs, Math.ceil(Math.max(s0[1], s1[1], s2[1], s3[1])) + 1);
+        if (sx1 <= sx0 || sy1 <= sy0) continue;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip();
+        ctx.setTransform(A1, B1, C1, D1, E1, F1);
+        ctx.drawImage(sc, sx0, sy0, sx1 - sx0, sy1 - sy0, sx0, sy0, sx1 - sx0, sy1 - sy0);
+        ctx.restore();
+      }
+    });
+  }
+
+  function renderMap(e, base, ovs, dpiSel, missing) {
+    var fw = e.lay.frame.w, fh = e.lay.frame.h, dpi = dpiSel;
+    var W = Math.round(fw / 25.4 * dpi), H = Math.round(fh / 25.4 * dpi);
+    var big = Math.max(W, H);
+    if (big > 4096) { dpi = Math.floor(dpi * 4096 / big); W = Math.round(fw / 25.4 * dpi); H = Math.round(fh / 25.4 * dpi); }
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d');
+    function blank() { ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
+    blank();
+    var used = base;
+    return drawBaseUTM(ctx, e, W, H, base).catch(function (err) {
+      if (base.name === 'OpenStreetMap') throw err;
+      blank(); used = OSM_BASE;
+      toast('Bakgrunnskartet fra Kartverket kunne ikke hentes til PDF. Bruker OpenStreetMap.');
+      return drawBaseUTM(ctx, e, W, H, OSM_BASE);
+    }).then(function () {
+      return Promise.all(ovs.map(function (ov) {
+        var job = ov.type === 'wms' ? fetchWmsOverlay(ov, e, W, H) : fetchOverlay(ov, e, W, H, dpi);
+        return job.catch(function () { missing[ov.name] = 1; return null; });
+      }));
+    }).then(function (bms) {
+      bms.forEach(function (bm, i) {
+        if (!bm) return;
+        var o = ovs[i].opacity;
+        ctx.globalAlpha = (o === undefined || o === null) ? 1 : o;
+        ctx.drawImage(bm, 0, 0, W, H);
+      });
+      ctx.globalAlpha = 1;
+      drawArea(ctx, e, W, H, dpi);
+      return { canvas: cv, base: used, ok: bms.map(Boolean) };
+    });
+  }
+
+  function makePdf() {
+    var specs = series.slice();
+    if (!specs.length) {
+      var e0 = computeExtent();
+      if (!e0) { mkStatus(noExtentMsg()); return; }
+      specs = [{ title: $('#mkTitle').value.trim() || 'Kartutsnitt', sub: $('#mkSub').value.trim(), e: e0 }];
+    }
+    if (!window.jspdf || !window.jspdf.jsPDF) { mkStatus('PDF-biblioteket ble ikke lastet. Sjekk nettverket og last siden på nytt.'); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var btn = $('#mkGo');
+    btn.disabled = true;
+    var dpiSel = parseInt($('#mkDpi').value, 10);
+    var includeArea = $('#mkArea').checked && !!lastGeom;
+    var curBase = activeBase(), missing = {}, doc = null, ovs = [];
+    var geomInfo = lastGeom ? toEsriGeom(lastGeom) : null;
+
+    mkStatus('Henter kartlag …');
+    (geomInfo
+      ? Promise.all(activeOverlays().map(function (ov) {
+          return ovHasHit(ov, geomInfo.esri, geomInfo.gType).then(function (hit) { return hit ? ov : null; });
+        })).then(function (rs) { return rs.filter(Boolean); })
+      : Promise.resolve(activeOverlays())
+    ).then(function (activeOvs) {
+      return Promise.all(activeOvs.map(function (ov) { return resolveOverlay(ov).then(function (r) { return { ov: ov, r: r }; }); }));
+    }).then(function (rs) {
+      rs.forEach(function (x) {
+        if (x.r) ovs.push({ type: 'esri', name: x.ov.name, svc: x.r.url, layers: x.r.ids, opacity: x.ov.op || 0.7 });
+        else missing[x.ov.name] = 1;
+      });
+      if (map.hasLayer(eiendom)) ovs.push({ type: 'wms', name: 'Eiendomsgrenser', url: eiendom._url, layers: eiendom.wmsParams.layers, opacity: 1 });
+      mkStatus('Henter tegnforklaring …');
+      return Promise.all(ovs.map(function (ov) {
+        if (ov.type !== 'esri') return null;
+        return getLegend(ov.svc).then(function (layers) { ov.swatch = pickLegendSwatch(ov, layers); }).catch(function () {});
+      }));
+    }).then(function () {
+      return specs.reduce(function (p, spec, i) {
+        return p.then(function () {
+          mkStatus('Lager kart ' + (i + 1) + ' av ' + specs.length + ' …');
+          return renderMap(spec.e, curBase, ovs, dpiSel, missing).then(function (res) {
+            curBase = res.base;
+            var lay = spec.e.lay, orient = lay.ori === 'l' ? 'landscape' : 'portrait', fmt = lay.size.toLowerCase();
+            if (!doc) doc = new jsPDF({ orientation: orient, unit: 'mm', format: fmt, compress: true });
+            else doc.addPage(fmt, orient);
+            var okOvs = ovs.filter(function (o, k) { return res.ok[k]; });
+            drawMapPage(doc, spec, res, okOvs, i, specs.length, includeArea);
+          });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      var ta = $('#report');
+      if ($('#mkText').checked && ta && ta.value) addTextPage(doc, ta.value);
+      var d = new Date().toISOString().slice(0, 10);
+      doc.save('kartutsnitt_' + d + (specs.length > 1 ? '_serie' : '_1-' + specs[0].e.scale) + '.pdf');
+      var miss = Object.keys(missing);
+      mkStatus(miss.length ? 'PDF lagret. Disse kartlagene kunne ikke hentes og er utelatt: ' + miss.join(', ') + '.' : 'PDF lagret.');
+    }).catch(function (err) {
+      mkStatus('Kunne ikke lage PDF: ' + err.message);
+    }).then(function () { btn.disabled = false; });
+  }
+
+    function renderSeries() {
+    $('#mkSeries').innerHTML = series.map(function (s, i) {
+      return '<li><span>' + esc(s.title) + ' <small>1:' + nf(s.e.scale) + ', ' + s.e.lay.size + (s.e.lay.ori === 'l' ? ' liggende' : ' stående') + ', UTM ' + s.e.zone + '</small></span>' +
+        '<button type="button" class="x" data-i="' + i + '" aria-label="Fjern fra serien">✕</button></li>';
+    }).join('');
+    $('#mkSeriesWrap').hidden = !series.length;
+    $('#mkGo').textContent = series.length ? 'Lag PDF (' + series.length + ' kart)' : 'Lag PDF';
+  }
+
+  function endEditExtent() {
+    editingExtent = false;
+    var btn = $('#mkEditDraw');
+    if (btn) btn.textContent = 'Rediger utsnittet';
+    if (extentLayer) {
+      extentLayer.editing.disable();
+      drawnBounds = extentLayer.getBounds();
+      updateFrame();
+    }
+  }
+
+  ['mkExtent', 'mkSize', 'mkOri', 'mkScale', 'mkZone'].forEach(function (id) {
+    $('#' + id).addEventListener('change', function () {
+      var drawing = $('#mkExtent').value === 'draw';
+      $('#mkDraw').hidden = !drawing;
+      $('#mkEditDraw').hidden = !drawing || !extentLayer;
+      if (!drawing && editingExtent) endEditExtent();
+      if ($('#mkExtent').value === 'analysis' && !lastGeom) mkStatus(noExtentMsg());
+      updateFrame();
+    });
+  });
+  $('#mkFrame').addEventListener('change', updateFrame);
+  $('#maker').addEventListener('toggle', updateFrame);
+  map.on('moveend', function () { if ($('#mkExtent').value === 'view') updateFrame(); });
+
+  $('#mkDraw').addEventListener('click', function () {
+    if (editingExtent) endEditExtent();
+    setMode('none');
+    activeDraw = new L.Draw.Rectangle(map, { shapeOptions: { color: '#1F5F7A', weight: 2, dashArray: '2 4', fillOpacity: 0.05 }, showArea: false });
+    activeDraw.enable();
+    extentDraw = function (ev) {
+      extentGroup.clearLayers();
+      extentLayer = ev.layer.addTo(extentGroup);
+      extentLayer.on('edit', function () { drawnBounds = extentLayer.getBounds(); updateFrame(); });
+      drawnBounds = extentLayer.getBounds();
+      $('#mkEditDraw').hidden = false;
+      updateFrame();
+      mkStatus('Utsnitt valgt. Kartrammen viser hva som kommer med i PDF-en.');
+    };
+    toast('Dra en rektangel i kartet for å velge utsnitt.');
+  });
+
+  $('#mkEditDraw').addEventListener('click', function () {
+    if (!extentLayer) return;
+    if (editingExtent) { endEditExtent(); mkStatus('Utsnitt oppdatert.'); return; }
+    cancelDraw();
+    editingExtent = true;
+    this.textContent = 'Ferdig med redigering';
+    extentLayer.editing.enable();
+  });
+
+  $('#mkAdd').addEventListener('click', function () {
+    var e = computeExtent();
+    if (!e) { mkStatus(noExtentMsg()); return; }
+    series.push({ title: $('#mkTitle').value.trim() || 'Kartutsnitt', sub: $('#mkSub').value.trim(), e: e });
+    renderSeries();
+    mkStatus('Lagt til i kartserien. Velg neste utsnitt og legg til flere, eller lag PDF.');
+  });
+  $('#mkSeries').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button.x');
+    if (!b) return;
+    series.splice(parseInt(b.dataset.i, 10), 1);
+    renderSeries();
+  });
+  $('#mkGo').addEventListener('click', makePdf);
+
+    window.addEventListener('resize', function () { map.invalidateSize(); });
+})();
+</script>
+</body>
+</html>
