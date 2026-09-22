@@ -924,11 +924,11 @@
       } },
 
     { n: 16, title: 'Vassdrags- og energirelaterte kulturminner',
-      q: { kv: { svc: 'kultur' } },
+      q: { kv: { svc: 'kultur', dist: 200 } },
       ev: function (R) {
         if (!okq(R.kv)) return { st: 'manual', txt: 'Sjekk i NVE Atlas om planområdet berører vassdrags- eller energirelaterte kulturminner (NVEs listeførte kulturminner).' };
-        if (totq(R.kv) > 0) return { st: 'hit', hits: hitL(R.kv).map(function (l) { return nice(l.name); }), txt: 'Analyseområdet har treff på vassdrags- eller energirelaterte kulturminner. Slike kulturminner har nasjonal verdi og må ivaretas på lik linje med andre kulturminner av nasjonal verdi. Vurder hensynssone H570 «Bevaring kulturmiljø». NVE skal være høringspart ved planer som berører kulturminnene.' };
-        return { st: 'none', txt: 'Ingen treff på vassdrags- eller energirelaterte kulturminner. Temaet er ikke relevant for plansaken.' };
+        if (totq(R.kv) > 0) return { st: 'hit', hits: hitL(R.kv).map(function (l) { return nice(l.name); }), txt: 'Analyseområdet ligger innenfor 200 m fra vassdrags- eller energirelaterte kulturminner (' + joinList(hitL(R.kv).map(function (l) { return nice(l.name); })) + '), fra NVEs eget utvalg av nasjonalt viktige kulturminner (kraftverk, dammer, kraftledninger, transformatorstasjoner og vassdragsanlegg). Slike kulturminner har nasjonal verdi og må ivaretas på lik linje med andre kulturminner av nasjonal verdi. Vurder hensynssone H570 «Bevaring kulturmiljø». NVE skal være høringspart ved planer som berører kulturminnene.' };
+        return { st: 'none', txt: 'Ingen treff på vassdrags- eller energirelaterte kulturminner innenfor 200 m. NVEs utvalg er en kort liste over nasjonalt viktige anlegg (kraftverk, dammer m.m.), ikke en fullstendig kulturminneoversikt — sjekk Riksantikvarens Kulturminnesøk eller kommunens kulturminneplan for et mer helhetlig bilde.' };
       } }
   ];
 
