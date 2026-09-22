@@ -4,7 +4,7 @@ Kartbasert verktøy for å vurdere naturfare og vassdrag i et planområde, som g
 
 ## Hva verktøyet gjør
 
-- Hent kartlag direkte fra **NVE** sine karttjenester: flom, skred i bratt terreng, snøskred, fjellskred, kvikkleire, erosjon, overvann, vassdrag, energianlegg og kulturminner.
+- Hent kartlag direkte fra **NVE** sine karttjenester: flom, skred i bratt terreng, snøskred, fjellskred, kvikkleire, erosjon, overvann, vassdrag og energianlegg.
 - Vis **eiendomsgrenser** fra Kartverkets Matrikkel-tjeneste.
 - Velg analyseområde som **punkt** (med valgfri sirkelradius), **polygon** eller **rektangel**, og rediger området i etterkant (dra noder, flytt punkt, endre radius).
 - Automatisk vurdering av de ulike naturfaretemaene, gruppert etter tema (flom/overvann, erosjon/vassdrag, skred, kvikkleire, energianlegg), med henvisninger til relevante TEK17-krav og NVE-veiledere.
