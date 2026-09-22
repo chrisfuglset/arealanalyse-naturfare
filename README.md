@@ -1,6 +1,6 @@
 # Arealanalyse – naturfare og vassdrag
 
-Kartbasert verktøy for å vurdere naturfare og vassdrag i et planområde, som grunnlag for reguleringsplan. Bygget som en selvstendig HTML-fil (HTML, CSS og JavaScript i én fil) — ingen installasjon nødvendig.
+Kartbasert verktøy for å vurdere naturfare og vassdrag i et planområde, som grunnlag for reguleringsplan. 
 
 ## Hva verktøyet gjør
 
