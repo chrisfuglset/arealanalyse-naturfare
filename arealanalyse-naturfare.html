@@ -70,13 +70,6 @@
 
   .result { border-top: 1px solid var(--line); padding-top: 16px; }
   .where { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
-  .status { border-left: 4px solid var(--line); background: var(--paper); padding: 9px 12px; margin-bottom: 8px; border-radius: 0 6px 6px 0; }
-  .status strong { display: block; font-weight: 600; font-size: 14px; }
-  .status span { font-size: 14px; color: var(--muted); }
-  .status.hit { border-left-color: var(--hit); background: var(--hit-bg); }
-  .status.hit span { color: var(--hit); font-weight: 500; }
-  .status.warn { border-left-color: var(--warn); background: var(--warn-bg); }
-  .status.warn span { color: var(--warn); }
 
   .sum { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
   .sum strong { color: var(--ink); }
@@ -137,7 +130,7 @@
   }
 
   @media print {
-    #map, .search, .tools, .actions, .fine, .zones, .status, .maker { display: none !important; }
+    #map, .search, .tools, .actions, .fine, .zones, .maker { display: none !important; }
     .app { display: block; height: auto; }
     .panel { overflow: visible; border: 0; padding: 0; }
     textarea#report { border: 0; padding: 0; resize: none; }
@@ -304,14 +297,35 @@
     return fetch(url, o).then(function (r) { clearTimeout(timer); return r; }, function (e) { clearTimeout(timer); throw e; });
   }
 
+  function fetchJson(url, opts) {
+    return fetchT(url, opts).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      if (j.error) throw new Error(j.error.message || 'Feil fra kartserveren');
+      return j;
+    });
+  }
+
+  function fetchImage(url) {
+    return fetchT(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if ((r.headers.get('content-type') || '').indexOf('image') !== 0) throw new Error('svarte ikke med bilde');
+      return r.blob();
+    }).then(function (b) { return createImageBitmap(b); });
+  }
+
+  /* Lag med egen geometri (ikke gruppelag) */
+  function isLeaf(l) { return l.geometryType && !(l.subLayerIds && l.subLayerIds.length); }
+
   function loadCatalog(host) {
-    return fetchT(host + '?f=json').then(function (r) { return r.json(); }).then(function (j) {
-      var list = (j.services || []).filter(function (s) { return s.type === 'MapServer'; }).map(function (s) { return { host: host, name: s.name }; });
+    function mapServers(j) {
+      return (j.services || []).filter(function (s) { return s.type === 'MapServer'; }).map(function (s) { return { host: host, name: s.name }; });
+    }
+    return fetchJson(host + '?f=json').then(function (j) {
       return Promise.all((j.folders || []).map(function (f) {
-        return fetchT(host + '/' + f + '?f=json').then(function (r) { return r.json(); }).then(function (jj) {
-          return (jj.services || []).filter(function (s) { return s.type === 'MapServer'; }).map(function (s) { return { host: host, name: s.name }; });
-        }).catch(function () { return []; });
-      })).then(function (arrs) { return list.concat([].concat.apply([], arrs)); });
+        return fetchJson(host + '/' + f + '?f=json').then(mapServers).catch(function () { return []; });
+      })).then(function (arrs) { return mapServers(j).concat([].concat.apply([], arrs)); });
     });
   }
 
@@ -330,7 +344,7 @@
     var spec = SVC[key];
     svcCache[key] = catalog().then(function (cat) {
       var c = cat.filter(function (s) { return spec.re.test(s.name.split('/').pop()); });
-      if (!c.length) return spec.fb ? { url: HOSTS[0] + '/' + spec.fb + '/MapServer', name: spec.fb, guess: true } : null;
+      if (!c.length) return spec.fb ? { url: HOSTS[0] + '/' + spec.fb + '/MapServer', name: spec.fb } : null;
       c.sort(function (a, b) {
         var h = HOSTS.indexOf(a.host) - HOSTS.indexOf(b.host); if (h) return h;
         var ba = spec.bad && spec.bad.test(a.name) ? 1 : 0, bb = spec.bad && spec.bad.test(b.name) ? 1 : 0; if (ba - bb) return ba - bb;
@@ -344,33 +358,34 @@
 
   /* Kartlag som vises i kartet og tas med i PDF. layers = regex mot lagnavn i tjenesten. */
   var OV = [
-    { name: 'Steg 1: Flomsoner, analyseområder', svc: 'flomsone', layers: /analyse/i },
-    { name: 'Steg 1: Flomsone 20-årsflom', svc: 'flomsone', layers: /^flomsone_?20ars_?flom$/i },
-    { name: 'Steg 1: Flomsone 200-årsflom', svc: 'flomsone', layers: /^flomsone_?200ars_?flom$/i },
-    { name: 'Steg 1: Flomsone 200-årsflom med klimapåslag', svc: 'flomsone', layers: /^flomsone_?200ars_?flom_?klima$/i },
-    { name: 'Steg 1: Flomsone 1000-årsflom', svc: 'flomsone', layers: /^flomsone_?1000ars_?flom$/i },
-    { name: 'Steg 2: Aktsomhetskart flom', svc: 'flomakt', layers: /akt/i, not: /dekning/i },
-    { name: 'Steg 4: Overvann (aktsomhet)', svc: 'overvann' },
-    { name: 'Steg 5: Faresoner skred i bratt terreng', svc: 'skredfare' },
-    { name: 'Steg 6: Aktsomhet jord- og flomskred', svc: 'jordflom', not: /dekning|kartlagt|kartblad/i },
-    { name: 'Steg 6: Aktsomhet snøskred (S3)', svc: 'sno', layers: /S3/i },
-    { name: 'Steg 6: Aktsomhet steinsprang', svc: 'stein', layers: /akt|utl|løs|los/i, not: /kartlagt|ikke/i },
-    { name: 'Steg 6: Tidligere skredhendelser', svc: 'hendelse' },
-    { name: 'Steg 7: Hellingskart', svc: 'bratthet', op: 0.6 },
-    { name: 'Steg 8: Snøskred S2 uten skogeffekt', svc: 'sno', layers: /S2.*u_?skog/i },
-    { name: 'Steg 8: Snøskred S2 med skogeffekt', svc: 'sno', layers: /S2.*m_?skog/i },
-    { name: 'Steg 8: Skog med betydning for snøskredfare', svc: 'sno', layers: /skog_med/i },
-    { name: 'Steg 9: Fjellskred', svc: 'fjellskred' },
-    { name: 'Steg 10: Kvikkleiresoner (risikoklasse)', svc: 'kvsone', layers: /risiko/i, op: 0.8, on: true },
-    { name: 'Steg 10: Kvikkleiresoner (faregrad)', svc: 'kvsone', layers: /faregrad/i, op: 0.8 },
-    { name: 'Steg 11: Aktsomhetskart kvikkleireskred', svc: 'kvaakt', on: true },
-    { name: 'Steg 13: Vassdrag (Elvenett)', svc: 'elv', op: 0.9 },
-    { name: 'Steg 14: Vernede vassdrag', svc: 'vern' },
-    { name: 'Steg 15: Nettanlegg', svc: 'nett', op: 0.9 },
-    { name: 'Steg 15: Reguleringsmagasin', svc: 'magasin' },
-    { name: 'Steg 16: Vassdrags- og energirelaterte kulturminner', svc: 'kultur', op: 0.9 }
+    { name: 'Flomsoner, analyseområder', svc: 'flomsone', layers: /analyse/i },
+    { name: 'Flomsone 20-årsflom', svc: 'flomsone', layers: /^flomsone_?20ars_?flom$/i },
+    { name: 'Flomsone 200-årsflom', svc: 'flomsone', layers: /^flomsone_?200ars_?flom$/i },
+    { name: 'Flomsone 200-årsflom med klimapåslag', svc: 'flomsone', layers: /^flomsone_?200ars_?flom_?klima$/i },
+    { name: 'Flomsone 1000-årsflom', svc: 'flomsone', layers: /^flomsone_?1000ars_?flom$/i },
+    { name: 'Aktsomhetskart flom', svc: 'flomakt', layers: /akt/i, not: /dekning/i },
+    { name: 'Overvann (aktsomhet)', svc: 'overvann' },
+    { name: 'Faresoner skred i bratt terreng', svc: 'skredfare' },
+    { name: 'Aktsomhet jord- og flomskred', svc: 'jordflom', not: /dekning|kartlagt|kartblad/i },
+    { name: 'Aktsomhet snøskred (S3)', svc: 'sno', layers: /S3/i },
+    { name: 'Aktsomhet steinsprang', svc: 'stein', layers: /akt|utl|løs|los/i, not: /kartlagt|ikke/i },
+    { name: 'Tidligere skredhendelser', svc: 'hendelse' },
+    { name: 'Hellingskart', svc: 'bratthet', op: 0.6 },
+    { name: 'Snøskred S2 uten skogeffekt', svc: 'sno', layers: /S2.*u_?skog/i },
+    { name: 'Snøskred S2 med skogeffekt', svc: 'sno', layers: /S2.*m_?skog/i },
+    { name: 'Skog med betydning for snøskredfare', svc: 'sno', layers: /skog_med/i },
+    { name: 'Fjellskred', svc: 'fjellskred' },
+    { name: 'Kvikkleiresoner (risikoklasse)', svc: 'kvsone', layers: /risiko/i, op: 0.8, on: true },
+    { name: 'Kvikkleiresoner (faregrad)', svc: 'kvsone', layers: /faregrad/i, op: 0.8 },
+    { name: 'Aktsomhetskart kvikkleireskred', svc: 'kvaakt', on: true },
+    { name: 'Vassdrag (Elvenett)', svc: 'elv', op: 0.9 },
+    { name: 'Vernede vassdrag', svc: 'vern' },
+    { name: 'Nettanlegg', svc: 'nett', op: 0.9 },
+    { name: 'Reguleringsmagasin', svc: 'magasin' },
+    { name: 'Vassdrags- og energirelaterte kulturminner', svc: 'kultur', op: 0.9 }
   ];
 
+  /* Løser opp kartlagets tjeneste og lag-id-er. ids = null betyr hele tjenesten. */
   var ovCache = {};
   function resolveOverlay(ov) {
     if (ovCache[ov.name]) return ovCache[ov.name];
@@ -379,31 +394,28 @@
       if (!ov.layers && !ov.not) return { url: s.url, ids: null, svc: s.name };
       return getLayers(s.url).then(function (layers) {
         var ids = layers.filter(function (l) {
-          return l.geometryType && !(l.subLayerIds && l.subLayerIds.length) && (!ov.layers || ov.layers.test(l.name)) && !(ov.not && ov.not.test(l.name));
+          return isLeaf(l) && (!ov.layers || ov.layers.test(l.name)) && !(ov.not && ov.not.test(l.name));
         }).map(function (l) { return l.id; });
-        if (!ids.length) return null;
-        return { url: s.url, ids: ids, svc: s.name };
+        return ids.length ? { url: s.url, ids: ids, svc: s.name } : null;
       });
     }).catch(function () { return null; });
     return ovCache[ov.name];
   }
 
-    function ovHasHit(ov, esri, gType) {
+  function ovHasHit(ov, esri, gType) {
     return resolveOverlay(ov).then(function (r) {
       if (!r) return false;
       var idsP = r.ids ? Promise.resolve(r.ids) : getLayers(r.url).then(function (layers) {
-        return layers.filter(function (l) { return l.geometryType && !(l.subLayerIds && l.subLayerIds.length); }).map(function (l) { return l.id; });
+        return layers.filter(isLeaf).map(function (l) { return l.id; });
       });
       return idsP.then(function (ids) {
-        if (!ids.length) return false;
         return Promise.all(ids.map(function (id) {
-          return arcQuery(r.url + '/' + id, esri, gType, false, { countOnly: true, dist: PDF_LAYER_BUFFER_M }).then(function (j) { return (j.count || 0) > 0; }).catch(function () { return false; });
+          return arcQuery(r.url + '/' + id, esri, gType, false, { countOnly: true, dist: PDF_LAYER_BUFFER_M })
+            .then(function (j) { return (j.count || 0) > 0; }, function () { return false; });
         })).then(function (flags) { return flags.some(Boolean); });
       });
     }).catch(function () { return false; });
   }
-
-  function ctlLabel(name) { return name.replace(/^Steg\s*\d+:\s*/, ''); }
 
   function initOverlays() {
     var ctl = {};
@@ -423,7 +435,7 @@
         });
       });
       ov.group.on('remove', function () { if (ov.inner) ov.group.removeLayer(ov.inner); });
-      ctl[ctlLabel(ov.name)] = ov.group;
+      ctl[ov.name] = ov.group;
       if (ov.on) ov.group.addTo(map);
     });
     return ctl;
@@ -473,6 +485,10 @@
     toastTimer = setTimeout(function () { t.style.display = 'none'; }, 5000);
   }
 
+  function layerRing(layer) {
+    var ll = layer.getLatLngs(), pts = Array.isArray(ll[0]) ? ll[0] : ll;
+    return pts.map(function (p) { return [p.lng, p.lat]; });
+  }
   function closeRing(r) {
     var a = r.slice(), f = a[0], l = a[a.length - 1];
     if (f[0] !== l[0] || f[1] !== l[1]) a.push([f[0], f[1]]);
@@ -516,19 +532,15 @@
 
   /* ---------- Kall mot NVE / Kartverket ---------- */
   var layerCache = {};
-    function getLayers(svc) {
-    if (layerCache[svc]) return Promise.resolve(layerCache[svc]);
-    return fetchT(svc + '/layers?f=json').then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function (j) {
-      if (j.error) throw new Error(j.error.message || 'Feil fra kartserveren');
-      layerCache[svc] = j.layers || [];
-      return layerCache[svc];
-    });
+  function getLayers(svc) {
+    if (!layerCache[svc]) {
+      layerCache[svc] = fetchJson(svc + '/layers?f=json').then(function (j) { return j.layers || []; });
+      layerCache[svc].catch(function () { delete layerCache[svc]; });
+    }
+    return layerCache[svc];
   }
 
-    function arcQuery(layerUrl, esriGeom, gType, wantGeom, opts) {
+  function arcQuery(layerUrl, esriGeom, gType, wantGeom, opts) {
     opts = opts || {};
     var body = new URLSearchParams({
       f: wantGeom ? 'geojson' : 'json',
@@ -543,15 +555,8 @@
     });
     if (wantGeom) { body.set('geometryPrecision', '6'); body.set('maxAllowableOffset', '0.00002'); }
     if (opts.dist) { body.set('distance', String(opts.dist)); body.set('units', 'esriSRUnit_Meter'); }
-    if (opts.count) body.set('resultRecordCount', String(opts.count));
     if (opts.countOnly) { body.set('returnCountOnly', 'true'); body.set('returnGeometry', 'false'); }
-    return fetchT(layerUrl + '/query', { method: 'POST', body: body }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function (j) {
-      if (j.error) throw new Error(j.error.message || 'Feil fra kartserveren');
-      return j;
-    });
+    return fetchJson(layerUrl + '/query', { method: 'POST', body: body });
   }
 
   function intersectArea(areaPoly, feat) {
@@ -561,7 +566,7 @@
     } catch (e) { return NaN; }
   }
 
-    function analyseAkt(esri, gType, areaPoly, areaM2) {
+  function analyseAkt(esri, gType, areaPoly, areaM2) {
     return resolveSvc('kvaakt').then(function (svc) {
       if (!svc) throw new Error('tjenesten ble ikke funnet hos NVE');
       var base = svc.url;
@@ -604,7 +609,7 @@
     }).catch(function (e) { return { ok: false, error: e.message }; });
   }
 
-    function analyseSone(esri, gType) {
+  function analyseSone(esri, gType) {
     return resolveSvc('kvsone').then(function (svc) {
       if (!svc) throw new Error('tjenesten ble ikke funnet hos NVE');
       var base = svc.url;
@@ -639,7 +644,7 @@
 
   function reverseGeocode(lat, lon) {
     var u = 'https://ws.geonorge.no/adresser/v1/punktsok?' + new URLSearchParams({ lat: lat, lon: lon, radius: 250, treffPerSide: 1, utkoordsys: 4258 });
-    return fetch(u).then(function (r) { return r.json(); }).then(function (j) { return (j.adresser || [])[0] || null; }).catch(function () { return null; });
+    return fetchJson(u).then(function (j) { return (j.adresser || [])[0] || null; }).catch(function () { return null; });
   }
 
   /* ---------- Analyse ---------- */
@@ -660,9 +665,12 @@
     } else {
       analysisLayer = L.polygon(g.ring.map(function (p) { return [p[1], p[0]]; }), st).addTo(shapeGroup);
     }
-    var editBtn = $('#editShape'), delBtn = $('#deleteShape');
-    if (editBtn) editBtn.disabled = !analysisLayer;
-    if (delBtn) delBtn.disabled = !analysisLayer;
+    setAreaButtons(true);
+  }
+
+  function setAreaButtons(on) {
+    $('#editShape').disabled = !on;
+    $('#deleteShape').disabled = !on;
   }
 
   function toEsriGeom(g) {
@@ -714,14 +722,12 @@
       if (!s) return { ok: false, missing: true, error: 'tjenesten ble ikke funnet hos NVE' };
       return getLayers(s.url).then(function (layers) {
         var sel = layers.filter(function (l) {
-          return l.geometryType && !(l.subLayerIds && l.subLayerIds.length) &&
-            (!q.geom || q.geom.test(l.geometryType)) && (!q.layers || q.layers.test(l.name)) && !(q.not && q.not.test(l.name));
+          return isLeaf(l) && (!q.geom || q.geom.test(l.geometryType)) && (!q.layers || q.layers.test(l.name)) && !(q.not && q.not.test(l.name));
         }).slice(0, 24);
         if (!sel.length) return { ok: false, missing: true, svc: s.name, error: 'fant ingen passende kartlag i ' + s.name };
         return Promise.all(sel.map(function (l) {
-          return arcQuery(s.url + '/' + l.id, esri, gType, false, { dist: q.dist, count: 25 }).then(function (j) {
-            var feats = j.features || [];
-            return { id: l.id, name: l.name, info: l, count: feats.length, more: !!j.exceededTransferLimit, rows: feats.slice(0, 8).map(function (f) { return f.attributes || {}; }) };
+          return arcQuery(s.url + '/' + l.id, esri, gType, false, { dist: q.dist, countOnly: true }).then(function (j) {
+            return { id: l.id, name: l.name, count: j.count || 0 };
           }).catch(function (e) { return { id: l.id, name: l.name, count: 0, error: e.message }; });
         })).then(function (res) {
           var good = res.filter(function (x) { return !x.error; });
@@ -956,7 +962,7 @@
     });
   }
 
-  function usedServices(by, ctx) {
+  function usedServices(by) {
     var set = {};
     Object.keys(by).forEach(function (n) { Object.keys(by[n]).forEach(function (k) { var r = by[n][k]; if (r && r.svc) set[r.svc] = 1; }); });
     return Object.keys(set);
@@ -1104,11 +1110,7 @@
       }
     } else {
       analysisLayer.editing.disable();
-      if (rerun) {
-        var ll2 = analysisLayer.getLatLngs();
-        var pts = Array.isArray(ll2[0]) ? ll2[0] : ll2;
-        runAnalysis({ kind: 'polygon', ring: pts.map(function (p) { return [p.lng, p.lat]; }) });
-      }
+      if (rerun) runAnalysis({ kind: 'polygon', ring: layerRing(analysisLayer) });
     }
   }
 
@@ -1136,8 +1138,7 @@
     shapeGroup.clearLayers();
     analysisLayer = null;
     lastGeom = null;
-    $('#deleteShape').disabled = true;
-    $('#editShape').disabled = true;
+    setAreaButtons(false);
     $('#out').innerHTML = '<p class="empty">Klikk i kartet, søk etter en adresse eller tegn et område for å hente kartlag fra NVE.</p>';
     updateFrame();
     if ($('#mkExtent').value === 'analysis') mkStatus(noExtentMsg());
@@ -1179,12 +1180,10 @@
       cb(e);
       return;
     }
-    var ll = e.layer.getLatLngs();
-    var pts = Array.isArray(ll[0]) ? ll[0] : ll;
     lastDrawEnd = Date.now();
     activeDraw = null;
     setTimeout(function () { setMode('point'); }, 300);
-    runAnalysis({ kind: 'polygon', ring: pts.map(function (p) { return [p.lng, p.lat]; }) });
+    runAnalysis({ kind: 'polygon', ring: layerRing(e.layer) });
   });
 
   map.on('click', function (e) {
@@ -1205,8 +1204,7 @@
     var v = q.value.trim();
     if (v.length < 3) { closeHits(); return; }
     debounce = setTimeout(function () {
-      fetch('https://ws.geonorge.no/adresser/v1/sok?' + new URLSearchParams({ sok: v, fuzzy: 'true', treffPerSide: 6, utkoordsys: 4258 }))
-        .then(function (r) { return r.json(); })
+      fetchJson('https://ws.geonorge.no/adresser/v1/sok?' + new URLSearchParams({ sok: v, fuzzy: 'true', treffPerSide: 6, utkoordsys: 4258 }))
         .then(function (j) {
           var list = j.adresser || [];
           if (!list.length) { hits.innerHTML = '<li>Ingen treff</li>'; }
@@ -1245,7 +1243,6 @@
   var drawnBounds = null, series = [], frameRect = null, legendCache = {};
   var extentLayer = null, editingExtent = false;
 
-  /* PDF-BEGIN (rene tegnefunksjoner, uten DOM) */
   var PAPER = { A4: [210, 297], A3: [297, 420] };
 
   function nf(n) { return Number(n).toLocaleString('nb-NO'); }
@@ -1323,7 +1320,7 @@
     return y;
   }
 
-    function fmtM(m) { return m >= 1000 ? nf(m / 1000) + ' km' : nf(m) + ' m'; }
+  function fmtM(m) { return m >= 1000 ? nf(m / 1000) + ' km' : nf(m) + ' m'; }
   function gridStep(scale) {
     var steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000];
     for (var i = 0; i < steps.length; i++) if (steps[i] * 1000 / scale >= 30) return steps[i];
@@ -1395,9 +1392,9 @@
 
   function legendItems(ovs, includeArea) {
     var out = ovs.map(function (ov) {
-      if (ov.type === 'wms') return { label: ctlLabel(ov.name), draw: 'line' };
-      if (ov.swatch) return { label: ctlLabel(ov.name), img: ov.swatch.img, w: ov.swatch.w, h: ov.swatch.h };
-      return { label: ctlLabel(ov.name) };
+      if (ov.type === 'wms') return { label: ov.name, draw: 'line' };
+      if (ov.swatch) return { label: ov.name, img: ov.swatch.img, w: ov.swatch.w, h: ov.swatch.h };
+      return { label: ov.name };
     });
     if (includeArea) out.push({ label: 'Analyseområde', draw: 'area' });
     return out;
@@ -1441,7 +1438,7 @@
     }
   }
 
-    function drawGrid(doc, e) {
+  function drawGrid(doc, e) {
     var f = e.lay.frame, step = gridStep(e.scale), k = 1000 / e.scale, E, N, x, y, label, tw;
     var faint = null;
     try { faint = new doc.GState({ opacity: 0.55, 'stroke-opacity': 0.55 }); } catch (err) { /* uten gjennomsiktighet */ }
@@ -1469,7 +1466,7 @@
     }
   }
 
-    function drawMapPage(doc, spec, res, ovs, idx, total, includeArea) {
+  function drawMapPage(doc, spec, res, ovs, idx, total, includeArea) {
     var e = spec.e, f = e.lay.frame;
     doc.addImage(res.canvas.toDataURL('image/jpeg', 0.92), 'JPEG', f.x, f.y, f.w, f.h);
     if (e.grid) drawGrid(doc, e);
@@ -1502,16 +1499,11 @@
       y += 3;
     });
   }
-  /* PDF-END */
-
   function toMerc(lat, lng) {
     return [R_EARTH * lng * Math.PI / 180, R_EARTH * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360))];
   }
-  function fromMerc(x, y) {
-    return [(2 * Math.atan(Math.exp(y / R_EARTH)) - Math.PI / 2) * 180 / Math.PI, x / R_EARTH * 180 / Math.PI];
-  }
 
-    var GRS_F = 1 / 298.257222101, UTM_K0 = 0.9996;
+  var GRS_F = 1 / 298.257222101, UTM_K0 = 0.9996;
   var UN = GRS_F / (2 - GRS_F);
   var UA = R_EARTH / (1 + UN) * (1 + UN * UN / 4 + Math.pow(UN, 4) / 64);
   var U_ALPHA = [UN / 2 - 2 * UN * UN / 3 + 5 * Math.pow(UN, 3) / 16, 13 * UN * UN / 48 - 3 * Math.pow(UN, 3) / 5, 61 * Math.pow(UN, 3) / 240];
@@ -1565,7 +1557,7 @@
     return s === 'analysis' ? 'Velg et analyseområde først (klikk i kartet, søk eller tegn).' : 'Tegn utsnittet i kartet først.';
   }
 
-    function computeExtent() {
+  function computeExtent() {
     var src = $('#mkExtent').value;
     var bounds = src === 'view' ? map.getBounds() : (src === 'analysis' ? analysisBounds() : drawnBounds);
     if (!bounds) return null;
@@ -1590,7 +1582,7 @@
     };
   }
 
-    function updateFrame() {
+  function updateFrame() {
     if (frameRect) { map.removeLayer(frameRect); frameRect = null; }
     if (!$('#maker').open) return;
     var e = computeExtent();
@@ -1610,7 +1602,7 @@
     return { name: 'Kartverket topografisk', url: kvTopo._url, attr: '© Kartverket', maxZ: 18 };
   }
 
-    function activeOverlays() {
+  function activeOverlays() {
     return OV.filter(function (o) { return map.hasLayer(o.group); });
   }
 
@@ -1660,42 +1652,33 @@
     });
   }
 
-    function fetchOverlay(ov, e, W, H, dpi) {
+  function fetchOverlay(ov, e, W, H, dpi) {
     var p = new URLSearchParams({
       f: 'image', bbox: [e.x0, e.y0, e.x1, e.y1].join(','), bboxSR: String(e.epsg), imageSR: String(e.epsg),
       size: W + ',' + H, dpi: String(dpi), format: 'png32', transparent: 'true'
     });
     if (ov.layers) p.set('layers', 'show:' + ov.layers.join(','));
-    return fetch(ov.svc + '/export?' + p.toString()).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      if ((r.headers.get('content-type') || '').indexOf('image') !== 0) throw new Error('svarte ikke med bilde');
-      return r.blob();
-    }).then(function (b) { return createImageBitmap(b); });
+    return fetchImage(ov.svc + '/export?' + p.toString());
   }
 
-    function fetchWmsOverlay(ov, e, W, H) {
+  function fetchWmsOverlay(ov, e, W, H) {
     var p = new URLSearchParams({
       SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetMap', LAYERS: ov.layers, STYLES: '',
       CRS: 'EPSG:' + e.epsg, BBOX: [e.x0, e.y0, e.x1, e.y1].join(','),
       WIDTH: String(W), HEIGHT: String(H), FORMAT: 'image/png', TRANSPARENT: 'TRUE'
     });
-    return fetch(ov.url + '?' + p.toString()).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      if ((r.headers.get('content-type') || '').indexOf('image') !== 0) throw new Error('svarte ikke med bilde');
-      return r.blob();
-    }).then(function (b) { return createImageBitmap(b); });
+    return fetchImage(ov.url + '?' + p.toString());
   }
 
   function getLegend(svc) {
-    if (legendCache[svc]) return Promise.resolve(legendCache[svc]);
-    return fetch(svc + '/legend?f=json').then(function (r) { return r.json(); }).then(function (j) {
-      if (j.error) throw new Error(j.error.message || 'legend');
-      legendCache[svc] = j.layers || [];
-      return legendCache[svc];
-    });
+    if (!legendCache[svc]) {
+      legendCache[svc] = fetchJson(svc + '/legend?f=json').then(function (j) { return j.layers || []; });
+      legendCache[svc].catch(function () { delete legendCache[svc]; });
+    }
+    return legendCache[svc];
   }
 
-    function drawArea(ctx, e, W, H, dpi) {
+  function drawArea(ctx, e, W, H, dpi) {
     if (!$('#mkArea').checked || !lastGeom) return;
     var sx = W / e.mw, mm = dpi / 25.4;
     function P(lat, lng) { var u = toUTM(lat, lng, e.zone); return [(u[0] - e.x0) * sx, (e.y1 - u[1]) * sx]; }
@@ -1718,7 +1701,7 @@
     ctx.restore();
   }
 
-    /* Bakgrunnsfliser ligger i Web Mercator. De hentes til et hjelpelerret og omprojiseres til UTM
+  /* Bakgrunnsfliser ligger i Web Mercator. De hentes til et hjelpelerret og omprojiseres til UTM
      i små blokker; innenfor en blokk er avbildningen i praksis affin. */
   function drawBaseUTM(ctx, e, W, H, base) {
     var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity, i, j;
@@ -1861,7 +1844,7 @@
     }).then(function () { btn.disabled = false; });
   }
 
-    function renderSeries() {
+  function renderSeries() {
     $('#mkSeries').innerHTML = series.map(function (s, i) {
       return '<li><span>' + esc(s.title) + ' <small>1:' + nf(s.e.scale) + ', ' + s.e.lay.size + (s.e.lay.ori === 'l' ? ' liggende' : ' stående') + ', UTM ' + s.e.zone + '</small></span>' +
         '<button type="button" class="x" data-i="' + i + '" aria-label="Fjern fra serien">✕</button></li>';
